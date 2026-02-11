@@ -1,15 +1,19 @@
-use variance_family::{LendFamily, Varying};
+#![expect(unsafe_code, reason = "Allow `unsafe` code to rely on implementations being correct")]
+
+use variance_family::{LendFamily, MaxUpperBound, UpperBound, Varying};
 
 
 /// Shorthand for applying a `'a` lifetime parameter to the `T::View` lifetime family.
 ///
 /// This requires that `T: 'a` (and `T: AliasableView`).
-pub type View<'a, T> = Varying<'a, 'a, T, <T as AliasableView>::View>;
+pub type View<'a, T, Upper = MaxUpperBound>
+    = Varying<'a, 'a, Upper, <T as AliasableView<Upper>>::View>;
 
 /// Shorthand for applying a `'a` lifetime parameter to the `T::ViewMut` lifetime family.
 ///
 /// This requires that `T: 'a` (and `T: AliasableViewMut`).
-pub type ViewMut<'a, T> = Varying<'a, 'a, T, <T as AliasableViewMut>::ViewMut>;
+pub type ViewMut<'a, T, Upper = MaxUpperBound>
+    = Varying<'a, 'a, Upper, <T as AliasableViewMut<Upper>>::ViewMut>;
 
 /// A trait for types with temporary views that can be soundly lifetime-extended (or, in the case
 /// of raw pointers, continue to be soundly accessed) under specific conditions.
@@ -187,8 +191,8 @@ pub type ViewMut<'a, T> = Varying<'a, 'a, T, <T as AliasableViewMut>::ViewMut>;
 /// [`AliasableDeref`]: https://docs.rs/aliasable_deref_trait/1.0.0/aliasable_deref_trait/trait.AliasableDeref.html
 /// [`StableDeref`]: https://docs.rs/stable_deref_trait/1.2.1/stable_deref_trait/trait.StableDeref.html
 /// [is unsound]: https://github.com/Storyyeller/stable_deref_trait/issues/15#issuecomment-3714995546
-pub unsafe trait AliasableView {
-    type View: LendFamily<Self>;
+pub unsafe trait AliasableView<Upper: UpperBound = MaxUpperBound> {
+    type View: LendFamily<Upper>;
 
     /// Get a temporary view of this type.
     ///
@@ -212,7 +216,7 @@ pub unsafe trait AliasableView {
     /// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html
     /// [trait-level documentation]: AliasableView#implications-for-users
     #[must_use]
-    fn view(&self) -> View<'_, Self>;
+    fn view(&self) -> View<'_, Self, Upper>;
 }
 
 /// A trait for types with temporary mutable views that can be soundly lifetime-extended (or, in
@@ -349,8 +353,8 @@ pub unsafe trait AliasableView {
 /// [`UnsafeCell`]: core::cell::UnsafeCell
 /// [`AliasableRefMut<'a, T>`]: crate::data_source::aliasable::AliasableRefMut
 /// [`Self::ViewMut`]: AliasableViewMut::ViewMut
-pub unsafe trait AliasableViewMut: AliasableView {
-    type ViewMut: LendFamily<Self>;
+pub unsafe trait AliasableViewMut<Upper: UpperBound = MaxUpperBound>: AliasableView<Upper> {
+    type ViewMut: LendFamily<Upper>;
 
     /// Get a temporary mutable view of this type.
     ///
@@ -372,7 +376,7 @@ pub unsafe trait AliasableViewMut: AliasableView {
     /// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html
     /// [trait-level documentation]: AliasableViewMut#implications-for-users
     #[must_use]
-    fn view_mut(&mut self) -> ViewMut<'_, Self>;
+    fn view_mut(&mut self) -> ViewMut<'_, Self, Upper>;
 }
 
 /// Extend the conditions under which temporary views of this type may be soundly lifetime-extended
@@ -421,14 +425,14 @@ pub unsafe trait AliasableViewMut: AliasableView {
 /// [`mem::forget`]: core::mem::forget
 pub unsafe trait AliasableClone: AliasableView + Clone {}
 
-pub trait IntoAliasable {
-    type IntoAliasable: AliasableView;
+pub trait IntoAliasable<Upper: UpperBound = MaxUpperBound> {
+    type IntoAliasable: AliasableView<Upper>;
 
     #[must_use]
     fn into_aliasable(self) -> Self::IntoAliasable;
 }
 
-impl<T: AliasableView> IntoAliasable for T {
+impl<T: AliasableView<Upper>, Upper: UpperBound> IntoAliasable<Upper> for T {
     type IntoAliasable = Self;
 
     #[inline]
@@ -437,6 +441,12 @@ impl<T: AliasableView> IntoAliasable for T {
     }
 }
 
-pub trait IntoAliasableMut: IntoAliasable<IntoAliasable: AliasableViewMut> {}
+pub trait IntoAliasableMut<Upper: UpperBound = MaxUpperBound>:
+    IntoAliasable<Upper, IntoAliasable: AliasableViewMut<Upper>>
+{}
 
-impl<T: IntoAliasable<IntoAliasable: AliasableViewMut>> IntoAliasableMut for T {}
+impl<T, Upper> IntoAliasableMut<Upper> for T
+where
+    T: IntoAliasable<Upper, IntoAliasable: AliasableViewMut<Upper>>,
+    Upper: UpperBound,
+{}
