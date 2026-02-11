@@ -25,3 +25,5 @@ all-features = true
 default = ["std"]
 std     = ["alloc"]
 alloc   = []
+
+more-impls = []

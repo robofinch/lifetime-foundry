@@ -30,7 +30,7 @@ mod traits;
 mod unvarying;
 /// `covariant`, `contravariant`, and `unvarying` macros that cover common cases, in addition to
 /// `recursive_covariant`, `recursive_contravariant`, `recursive_unvarying`, and
-/// `recursive_covariant_for_unvarying` macros that require some `unsafe` to use.
+/// `covariant_for_recursive_unvarying` macros that require some `unsafe` to use.
 ///
 /// Additionally, an `invariant_zst` macro mainly used for their backend is included.
 mod macros;
@@ -77,7 +77,7 @@ mod std_impls;
 
 pub use self::traits::{
     ContravariantFamily, CovariantFamily, ImplyBound, LendFamily, LifetimeFamily,
-    UnvaryingFamily, Varying, WithLifetime,
+    MaxUpperBound, UnvaryingFamily, UpperBound, Varying, WithLifetime,
 };
 pub use self::main_const_impls::VaryingRef;
 pub use self::main_mut_impls::VaryingRefMut;

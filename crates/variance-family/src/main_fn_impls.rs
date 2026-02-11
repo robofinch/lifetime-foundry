@@ -1,6 +1,6 @@
 use core::mem::transmute;
 
-use crate::traits::{ContravariantFamily, CovariantFamily, Varying, WithLifetime};
+use crate::traits::{ContravariantFamily, CovariantFamily, UpperBound, Varying, WithLifetime};
 
 
 // Note: in below safety comments, "is covariant over" or "is contravariant over" means, more
@@ -26,7 +26,7 @@ macro_rules! fn_family {
         impl<'varying, 'lower, Upper, $($Ti,)* $R> WithLifetime<'varying, 'lower, Upper>
         for fn($($Ti),*) -> $R
         where
-            Upper: ?Sized,
+            Upper: UpperBound,
             $(
                 $Ti: ?Sized + WithLifetime<'varying, 'lower, Upper>,
             )*
@@ -50,7 +50,7 @@ macro_rules! fn_family {
         unsafe impl<'lower, Upper, $($Ti,)* $R> CovariantFamily<'lower, Upper>
         for fn($($Ti),*) -> $R
         where
-            Upper: ?Sized,
+            Upper: UpperBound,
             $(
                 $Ti: ?Sized + ContravariantFamily<'lower, Upper>,
             )*
@@ -163,7 +163,7 @@ macro_rules! fn_family {
         unsafe impl<'lower, Upper, $($Ti,)* $R> ContravariantFamily<'lower, Upper>
         for fn($($Ti),*) -> $R
         where
-            Upper: ?Sized,
+            Upper: UpperBound,
             $(
                 $Ti: ?Sized + CovariantFamily<'lower, Upper>,
             )*

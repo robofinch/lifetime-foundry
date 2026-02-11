@@ -1,7 +1,7 @@
 use core::mem::transmute;
 
 use crate::invariant_zst;
-use crate::traits::{ContravariantFamily, CovariantFamily, Varying, WithLifetime};
+use crate::traits::{ContravariantFamily, CovariantFamily, UpperBound, Varying, WithLifetime};
 
 
 // We *could* use the public macros to implement everything besides the function pointer cases,
@@ -22,7 +22,7 @@ use crate::traits::{ContravariantFamily, CovariantFamily, Varying, WithLifetime}
 
 impl<'a, 'varying, 'lower, Upper, T> WithLifetime<'varying, 'lower, Upper> for &'a T
 where
-    Upper: ?Sized,
+    Upper: UpperBound,
     T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
     T::Is: 'a,
 {
@@ -41,7 +41,7 @@ where
 // - The implementation safety requirements of `shorten` and `shorten_ref` are met.
 unsafe impl<'a, 'lower, Upper, T> CovariantFamily<'lower, Upper> for &'a T
 where
-    Upper: ?Sized,
+    Upper: UpperBound,
     T: ?Sized + CovariantFamily<'lower, Upper>,
     for<'varying> <T as WithLifetime<'varying, 'lower, Upper>>::Is: 'a,
 {
@@ -107,7 +107,7 @@ where
 // - The implementation safety requirements of `lengthen` and `lengthen_ref` are met.
 unsafe impl<'a, 'lower, Upper, T> ContravariantFamily<'lower, Upper> for &'a T
 where
-    Upper: ?Sized,
+    Upper: UpperBound,
     T: ?Sized + ContravariantFamily<'lower, Upper>,
     for<'varying> <T as WithLifetime<'varying, 'lower, Upper>>::Is: 'a,
 {
@@ -185,7 +185,7 @@ invariant_zst!(
 
 impl<'varying, 'lower, Upper, T> WithLifetime<'varying, 'lower, Upper> for VaryingRef<T>
 where
-    Upper: ?Sized,
+    Upper: UpperBound,
     T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
     T::Is: 'varying,
 {
@@ -204,7 +204,7 @@ where
 // - The implementation safety requirements of `shorten` and `shorten_ref` are met.
 unsafe impl<'lower, Upper, T> CovariantFamily<'lower, Upper> for VaryingRef<T>
 where
-    Upper: ?Sized,
+    Upper: UpperBound,
     T: ?Sized + CovariantFamily<'lower, Upper>,
     for<'varying> <T as WithLifetime<'varying, 'lower, Upper>>::Is: 'varying,
 {
@@ -273,7 +273,7 @@ where
 
 impl<'varying, 'lower, Upper, T> WithLifetime<'varying, 'lower, Upper> for *const T
 where
-    Upper: ?Sized,
+    Upper: UpperBound,
     T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
 {
     type Is = *const T::Is;
@@ -291,7 +291,7 @@ where
 // - The implementation safety requirements of `shorten` and `shorten_ref` are met.
 unsafe impl<'lower, Upper, T> CovariantFamily<'lower, Upper> for *const T
 where
-    Upper: ?Sized,
+    Upper: UpperBound,
     T: ?Sized + CovariantFamily<'lower, Upper>,
 {
     #[inline]
@@ -385,7 +385,7 @@ where
 // - The implementation safety requirements of `lengthen` and `lengthen_ref` are met.
 unsafe impl<'lower, Upper, T> ContravariantFamily<'lower, Upper> for *const T
 where
-    Upper: ?Sized,
+    Upper: UpperBound,
     T: ?Sized + ContravariantFamily<'lower, Upper>,
 {
     #[inline]
