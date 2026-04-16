@@ -20,43 +20,18 @@ impl UpperBound for &() {}
 
 pub type MaxUpperBound = &'static ();
 
-/// A private trait for sealing `ImplyBound`.
-trait Sealed {
-    /// Ensure that `ImplyBound` is not `dyn`-compatible in order to head off any concerns about
-    /// interactions between higher-ranked `dyn` trait objects and implied bounds.
-    #[expect(dead_code, reason = "removes `dyn`-compatibility without requiring `Sized`")]
-    fn remove_dyn_compatibility() {}
-}
-
-/// Provide implied bounds for a `'varying` lifetime, bounding it between
-/// a lower lifetime `'lower` and the lifetime of an `Upper` upper bound (which is `&'upper ()`
-/// for some `'upper`).
-#[expect(private_bounds, reason = "intentionally creating a sealed trait")]
-pub trait ImplyBound: Sealed {}
-
-impl<'varying, Upper: UpperBound> Sealed for (&'_ &'varying (), &'varying Upper) {}
-impl<'varying, Upper: UpperBound> ImplyBound for (&'_ &'varying (), &'varying Upper) {}
-
-/// An uninhabited type for sealing a `WithLifetime` method.
-enum PrivateSeal {}
-
 /// Apply a `'varying` lifetime to a family of types, and provide implied bounds that
 /// bound `'varying` between `'lower` and the lifetime of an `Upper` bound (which is `&'upper ()`
 /// for some `'upper`).
 ///
 /// ## Lifetimes
 ///
-/// The trait should be implemented for as many values of `'lower` and `Upper` as possible. In
-/// particular, even if an implementation does not need a nontrivial upper bound on `'varying`, do
-/// not solely implement the trait for the `'static` upper bound (unless `'static` is the only
-/// possible lifetime valid for `'varying`).
+/// The trait should be implemented for as many values of `'lower` and `Upper` as possible.
 ///
-/// Preserving maximum flexibility in lifetimes and upper bounds is important, as implementing
-/// `for<'varying, 'any> WithLifetime<'varying, 'any, &'static ()>` does not automatically imply
-/// implementations of `WithLifetime` for any other combinations of lifetimes and upper bounds,
-/// even though, semantically, we can reason that
-/// `for<'varying, 'any> WithLifetime<'varying, 'any, &'static ()>` applies maximally loose lower
-/// and upper bounds on `'varying` and should allow for arbitrary upper bounds.
+/// Additionally, for a given fixed `T`, `T::Is` must not use `'lower` or `Upper` (such
+/// that a lifetime family `T<..>` can be described as `T<'varying>`, and the `'lower` and `Upper`
+/// bounds truly just place bounds on `'varying` without doing anything else). This constraint
+/// is unsafely enforced by [`ChangeBounds`].
 ///
 /// ## Why not a GAT
 ///
@@ -84,33 +59,79 @@ enum PrivateSeal {}
 /// `for<'varying> <T as WithLifetime<'varying, 'lower, Upper>>::Is: ..Bounds` quantifies only
 /// over `'varying` lifetimes between `'lower` and all lifetimes in `Upper`.
 ///
-/// ## Alias
+/// ## Aliases
 ///
 /// Note that `<T as WithLifetime<'varying, 'lower, Upper>>::Is` is also available as a
 /// [`Varying<'varying, 'lower, Upper, T>`] alias (which is 13 characters shorter, and perhaps
 /// easier to read and write).
 ///
 /// Additionally, [`MaxUpperBound`] is provided as an alias for `&'static ()`.
-pub trait WithLifetime<
+///
+/// # Safety
+/// ## Usage of `'lower` and `Upper`
+/// This `Is` associated type must not use `'lower` or `Upper`.
+///
+/// This holds if and only if `<Self as WithLifetime<'varying, 'lower, Upper>>::Is` and
+/// `<Self as WithLifetime<'varying, 'other_lower, OtherUpper>>::Is` are the **same exact** type
+/// for any `'varying`, `'lower`, `Upper`, `'other_lower`, and `OtherUpper` such that:
+/// ```ignore
+/// Self: WithLifetime<'varying, 'lower, Upper> + WithLifetime<'varying, 'other_lower, OtherUpper>
+/// ```
+///
+/// This condition should be checked via the [`ChangeBounds`] supertrait. This safety condition
+/// is included just in case some way of evading that supertrait bound is found.
+///
+/// ## External Implementations
+/// This trait may only be implemented for types local to the crate containing the impl, with the
+/// special  exception of `variance-family` being permitted to implement this trait for types in
+/// `core`, `alloc`, and `std`.
+///
+/// This condition is *mostly* redundant with the usual orphan rules, with the exception of
+/// `#[fundamental]` types (currently: `&T`, `&mut T`, `Box<T>`, and `Pin<T>`). Some of the
+/// `unsafe` code in `variance-family` relies on reasoning about *all* implementations of
+/// `WithLifetime` for those `#[fundamental]` types, which safe code could hypothetically render
+/// unsound if not for this trait being `unsafe`. In the event that another crate uses
+/// `#[fundamental]` types, it would likewise be permitted to assume that other crates do not
+/// implement `WithLifetime` for its types, even if the orphan rules would not prevent that.
+pub unsafe trait WithLifetime<
     'varying, 'lower, Upper: UpperBound,
-    __ImplyBound: ImplyBound = (&'lower &'varying (), &'varying Upper),
-> {
+    __ImplyBound = &'lower &'varying Upper,
+>: ChangeBounds<'varying, 'lower, Upper, Self::Is> {
     type Is: ?Sized;
+}
 
-    /// Ensure that `WithLifetime` and `LifetimeFamily` are not `dyn`-compatible in order
-    /// to head off any concerns about interactions between higher-ranked `dyn` trait objects
-    /// and implied bounds.
-    #[doc(hidden)]
-    #[expect(
-        private_interfaces,
-        reason = "seal this method; nobody should bother implementing it",
-    )]
-    fn remove_dyn_compatibility(_seal: PrivateSeal) {}
+/// Enforce that `'lower` and `Upper` are solely used to constrain the `'varying` lifetime and
+/// are not actually used in the `Is` associated type.
+///
+/// # Safety
+/// `RawMutVarying<'varying, Self>` must be the same type as `*mut *mut V`.
+///
+/// An implementation is certainly sound if [`ChangeBounds::prove_equal`] is implemented with the
+/// function body `{ varying }`. Otherwise, you will need to thoroughly confirm that
+/// your lifetime family's type genuinely only uses `'varying` and not `'lower` or `Upper`, and you
+/// can implement the method with `{ varying.cast() }`.
+pub unsafe trait ChangeBounds<'varying, 'lower, Upper, V: ?Sized> {
+    fn prove_equal<'other_lower, OtherUpper>(
+        varying: RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
+    ) -> *mut *mut V
+    where
+        Self: WithLifetime<'varying, 'other_lower, OtherUpper>,
+        OtherUpper: UpperBound;
 }
 
 /// A slightly shorter and more legible alias for
 /// `<T as WithLifetime<'varying, 'lower, Upper>>::Is`.
 pub type Varying<'varying, 'lower, Upper, T> = <T as WithLifetime<'varying, 'lower, Upper>>::Is;
+
+/// A type which can only coerce to a different type `U` via subtyping coercions.
+///
+/// Since this type is covarariant over `T<'varying>`, attempting to coerce
+/// `RawVarying<'short, '_, _, T>` from or into `RawVarying<'long, '_, _, T>` where `'long: 'short`
+/// can indicate whether `T<'varying>` is covariant or contravariant over `'varying`.
+pub type RawVarying<'varying, 'lower, Upper, T> = *const *const Varying<'varying, 'lower, Upper, T>;
+
+/// A type which cannot coerce to any other type and is invariant over `T<'varying>`.
+pub type RawMutVarying<'varying, 'lower, Upper, T> = *mut *mut Varying<'varying, 'lower, Upper, T>;
 
 // ================================================================
 //  Lifetime Family traits
@@ -143,7 +164,7 @@ where
 /// actually use the `'varying` parameter.
 ///
 /// For any `'varying` lifetime between `'lower` and the lifetime of `Upper` (which is `&'upper ()`
-/// for some `'upper`), the type `Varying<'varying, 'lower, Upper, Self>` is simply equal to
+/// for some `'upper`), the type `Varying<'varying, Self>` is simply equal to
 /// `Self::WithAnyLifetime`.
 ///
 /// All possible implementations of this trait are already provided.
@@ -180,78 +201,8 @@ where
 /// documentation throughout this crate, "covariance" may actually refer to
 /// "the ability to soundly be covariantly casted" instead of the variance assigned by the compiler.
 ///
-/// # Note on Bounds
-/// `'lower` and `Upper` allow for bounds on `'varying` to be expressed via implied bounds, which
-/// may be necessary for implementations to satisfy well-formedness constraints. For instance,
-/// the `&'varying &'a T` covariant family must have `'varying` be at most `'a`, and the
-/// `&'a &'varying T` covariant family must have `'varying` be at least `'a`.
-///
-/// Note that `Upper` is always `&'upper ()` for some lifetime `'upper`.
-///
-/// [`MaxUpperBound`], which is an alias for `&'static ()`, is a maximally loose upper bound on
-/// `'varying`. However, there is no (and *cannot* be any) special lifetime that can be substituted
-/// into `'lower` to serve as a lower bound for all other lifetimes. Instead,
-/// `for<'lower> CovariantFamily<'lower, Upper>` uses a maximally loose lower bound (and implied
-/// bounds ensure that this works regardless of what `Upper` is).
-///
-/// As covariant lifetimes are usually freely shrinkable (such as `&'varying mut [u8]`) with
-/// only unusual exceptions (such as `&'a &'varying u8`, which requires `'varying: 'a`), common
-/// use cases will likely require `for<'lower> CovariantFamily<'lower, Upper>` bounds; such a
-/// bound is available more succinctly via [`LendFamily`].
-///
-/// # Safety of Use
-/// Code can always use safe methods to change the `'varying` lifetime, including
-/// [`CovariantFamily::shorten`], [`CovariantFamily::shorten_ref`], and the compiler's
-/// covariant coercion.
-///
-/// However, before performing any covariant casts on the `'varying` lifetime through `unsafe`
-/// means (such as [`transmute`]), the [`CovariantFamily::covariant_assertions`] must be called
-/// and not panic. The other two methods are not guaranteed to internally call
-/// `covariant_assertions`.
-///
-/// # Implementation
-///
-/// **You should probably not need to directly and unsafely implement this trait.**
-///
-/// The `variance-family` crate includes a large number of `unsafe` implementations of the marker
-/// traits for generic types for the sake of ergonomics for users -- in particular, for the sake
-/// of limiting how many times that others must unsafely implement the marker traits. When that
-/// does not suffice, there are also many helper macros.
-///
-/// You should first try to express your desired lifetime as a composition of other lifetime
-/// families, such as `(Cow<'a, str>, &'varying mut [u8], MyStruct)` becoming
-/// `(Cow<'a, str>, VaryingRefMut<[u8]>, Unvarying<MyStruct>)`.
-///
-// TODO: describe next steps.
-///
-/// # Implementation Safety
-///
-/// The following three conditions must be met.
-///
-/// - If [`CovariantFamily::covariant_assertions`] does not panic, then `'varying` must be sound
-///   to cast covariantly in `T<'varying>` (where `T<'varying>` is shorthand for
-///   `Varying<'varying, 'lower, Upper, T>`, and `'varying` is bounded by `'lower` and the
-///   lifetime of `Upper`).
-///
-/// - No assertions not included within `covariant_assertions` may be used.
-///
-/// - The implementation safety requirements of `shorten` and `shorten_ref` must be met.
-///
-/// ## Precise Elaboration
-/// For any implementation of this type, it must be sound to cast the `'varying` lifetime of
-/// `Varying<'varying, 'lower, Upper, T>` to any shorter lifetime which is at least as long as
-/// `'lower`.
-///
-/// Compile-time assertions (possibly resulting in post-monomorphization errors) may be placed
-/// in [`CovariantFamily::covariant_assertions`], which serve as additional preconditions for the
-/// family of types being covariant. Runtime assertions could also be included there, though their
-/// utility would seem questionable.
-///
-/// Provided that `covariant_assertions` does not panic, covariant casts on `'varying` may be
-/// performed via [`transmute`] or similar means, not necessarily via the
-/// [`CovariantFamily::shorten`] and [`CovariantFamily::shorten_ref`] methods.
-/// `shorten` and `shorten_ref` are provided in part for ergonomics and in part to help confirm
-/// that an implementation of this trait is sound.
+/// See the [`covariant`] and [`unvarying`] macros to implement this trait in simple cases.
+/// The below documentation contains details which you might not need to know.
 ///
 /// # Examples
 ///
@@ -268,148 +219,96 @@ where
 /// compiler, but it may still be sound to implement this trait. A type might, for instance, gate
 /// any parts of its interface that would normally rely on contravariance or invariance behind
 /// `unsafe` functions with safety comments properly ensuring that a type can be treated as
-/// covariant. The below is a more trivial example where the type does not actually rely on
-/// contravariance or invariance whatsoever.
+/// covariant.
 ///
+/// # Note on Bounds
+/// `'lower` and `Upper` allow for bounds on `'varying` to be expressed via implied bounds, which
+/// may be necessary for implementations to satisfy well-formedness constraints. For instance,
+/// the `&'varying &'a T` covariant family must have `'varying` be at most `'a`, and the
+/// `&'a &'varying T` covariant family must have `'varying` be at least `'a`. However, these bounds
+/// do *not* precisely constrain the range in which covariant casts are permitted; they are
+/// intended solely for well-formedness constraints.
+///
+/// Note that `Upper` is always `&'upper ()` for some lifetime `'upper`.
+///
+/// [`MaxUpperBound`], which is an alias for `&'static ()`, is a maximally loose upper bound on
+/// `'varying`. However, there is no (and *cannot* be any) special lifetime that can be substituted
+/// into `'lower` to serve as a lower bound for all other lifetimes. Instead,
+/// `for<'lower> CovariantFamily<'lower, Upper>` uses a maximally loose lower bound (and implied
+/// bounds ensure that this works regardless of what `Upper` is).
+///
+/// As covariant lifetimes are usually freely shrinkable (such as `&'varying mut [u8]`) with
+/// only unusual exceptions (such as `&'a &'varying u8`, which requires `'varying: 'a`), common
+/// use cases will likely require `for<'lower> CovariantFamily<'lower, Upper>` bounds; such a
+/// bound is available more succinctly via [`LendFamily`].
+///
+/// # Safety of Use
+/// Code can always use safe methods to change the `'varying` lifetime, including
+/// [`variance_family::shorten`] and the compiler's covariant coercion.
+///
+/// Additionally, performing covariant casts on the `'varying` lifetime through `unsafe` means
+/// (such as [`transmute`]) is permitted.
+///
+/// # Implementation
+///
+/// **You should probably not need to directly and unsafely implement this trait.**
+///
+/// The `variance-family` crate includes a large number of `unsafe` implementations of the marker
+/// traits for generic types for the sake of ergonomics for users -- in particular, for the sake
+/// of limiting how many times that others must unsafely implement the marker traits. When that
+/// does not suffice, there are also many helper macros.
+///
+/// You should first try to express your desired lifetime as a composition of other lifetime
+/// families, such as `(Cow<'a, str>, &'varying mut [u8], MyStruct)` becoming
+/// `(Cow<'a, str>, VaryingRefMut<[u8]>, Unvarying<MyStruct>)`.
+///
+/// If that fails, try to use [`covariant`] (or [`unvarying`]). If your use case involves generics
+/// which are treated as variance families, that macro will not be sufficient, so you will need
+/// to unsafely implement this trait (and its two unsafe supertraits).
+///
+/// # Implementation Safety
+/// `'varying` must be sound to cast covariantly in `T<'varying>` (where `T<'varying>` is
+/// shorthand for `Varying<'varying, T>`.
+///
+/// More precisely, for any `'short, 'long, 'lower, 'other_lower, 'upper, 'other_upper` where:
+/// ```rust
+/// 'long: 'short,
+/// Self: WithLifetime<'short, 'lower, 'upper> + WithLifetime<'long, 'other_lower, 'other_upper>,
 /// ```
-/// # use variance_family::{CovariantFamily, LifetimeFamily, WithLifetime, UpperBound, Varying};
-/// # use core::marker::PhantomData;
-/// /// # Variance
-/// /// Even though `'a` is invariant, covariant casts on `'a` are provided.
-/// /// Users should not rely on this type's invariance over `'a`.
-/// struct CouldBeCovariant<'a>(&'a str, PhantomData<fn(&'a ()) -> &'a ()>);
-/// struct CouldBeCovFamily;
+/// it must be sound to cast (possibly via [`transmute`])
+/// `<Self as WithLifetime<'long, 'other_lower, 'other_upper>>::Is` to
+/// `<Self as WithLifetime<'short, 'other_lower, 'other_upper>>::Is`
+/// in covariant positions, and vice-versa in contravariant positions.
 ///
-/// impl<'varying, Upper: UpperBound> WithLifetime<'varying, '_, Upper> for CouldBeCovFamily {
-///     type Is = CouldBeCovariant<'varying>;
-/// }
+/// That is, **the `'lower` and `Upper` bounds of this trait do not constrain the range in which
+/// covariant coercion is permitted**.
 ///
-/// /// # Safety
-/// /// `CouldBeCovariant<'varying>` can be treated as covariant over `'varying`; the invariance of
-/// /// `'varying` is utterly unimportant for safety. Semantically, it varies the same as
-/// /// `&'varying str`.
-/// unsafe impl<'lower, Upper: UpperBound> CovariantFamily<'lower, Upper> for CouldBeCovFamily {
-///     /// Performs no assertions.
-///     #[inline]
-///     fn covariant_assertions() {}
-///
-///     #[inline]
-///     fn shorten<'l, 's>(
-///         long: Varying<'l, 'lower, Upper, Self>,
-///     ) -> Varying<'s, 'lower, Upper, Self>
-///     where
-///         Upper: 'l,
-///         'l: 's,
-///         's: 'lower,
-///         for<'varying> Varying<'varying, 'lower, Upper, Self>: Sized,
-///     {
-///         CouldBeCovariant(long.0, PhantomData)
-///     }
-///
-///     #[inline]
-///     fn shorten_ref<'l, 's, 'r>(
-///         long: &'r Varying<'l, 'lower, Upper, Self>,
-///     ) -> &'r Varying<'s, 'lower, Upper, Self>
-///     where
-///         Upper: 'l,
-///         'l: 's,
-///         's: 'lower,
-///         Varying<'l, 'lower, Upper, Self>: 'r,
-///         Varying<'s, 'lower, Upper, Self>: 'r,
-///     {
-///         let long: &'r CouldBeCovariant<'l> = long;
-///         // SAFETY: this shortens the lifetime of the pointee. Shortening `&'l str` to
-///         // `&'s str` is sound, since that's covariant; meanwhile, `PhantomData` is a ZST that
-///         // attaches no semantic meaning to its type parameter. Additionally, `CouldBeCovariant`
-///         // doesn't *actually* use the invariance of its lifetime for anything important.
-///         // Moreover, to avoid the hypothetical situation where someone may use
-///         // `CouldBeCovariant` to cause invariance of `'l` and rely on that invariance for
-///         // correct semantics (or maybe even soundness) in some way that would be broken by
-///         // this cast, `CouldBeCovariant` documents that its lifetime parameter is
-///         // treated as covariant. It's on authors of other `unsafe` code to read its docs.
-///         let transmuted: &'r CouldBeCovariant<'s> = unsafe { core::mem::transmute(long) };
-///         transmuted
-///     }
-/// }
-/// ```
+/// If [`CovariantFamily::prove_covariance`] can be implemented with the function body `{ long }`,
+/// then the implementation is certainly sound. Otherwise, you will need to thoroughly confirm that
+/// your lifetime family is covariant over `'varying`, and you can implement the method with
+/// `{ long.cast() }`.
 ///
 /// [`transmute`]: core::mem::transmute
+/// [`covariant`]: crate::covariant
+/// [`unvarying`]: crate::unvarying
+/// [`variance_family::shorten`]: crate::shorten
 pub unsafe trait CovariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<'lower, Upper> {
-    /// Perform compile-time assertions, which may cause post-monomorphization errors.
+    /// Method to help show that `Self<'varying>` is covariant over `'varying` in simpler cases.
     ///
-    /// (The function could, hypothetically, also include runtime assertions.)
-    // TODO: `const` block example
-    #[inline]
-    fn covariant_assertions() {}
-
-    /// Soundly shorten the `'varying` lifetime of an owned `Self::WithLifetime<'varying>`.
+    /// If this method can be implemented with the body `{ long }`, then the compiler recognizes
+    /// this lifetime family as covariant over `'varying`, so the implementation of this trait
+    /// is sound.
     ///
-    /// # Implementation Safety
-    /// It is always sound to implement this function with the body `{ long }`,
-    /// relying on implicit covariant coercion (if possible).
-    ///
-    /// The function's body **MUST** be equivalent to:
-    /// ```
-    /// # struct Foo;
-    /// # impl Foo {
-    /// #     fn subset_of_assertions_in_covariant_assertions() {}
-    /// #     fn shorten(long: u8) -> u8
-    /// {
-    ///     // Usually just `Self::covariant_assertions();`
-    ///     Self::subset_of_assertions_in_covariant_assertions();
-    ///     // SAFETY: ..
-    ///     unsafe { ::core::mem::transmute(long) }
-    /// }
-    /// # }
-    /// ```
-    ///
-    /// Any assertions (or other possible causes of panics) in `Self::shorten` must be included in
-    /// `Self::covariant_assertions()`.
-    #[expect(clippy::unnecessary_safety_doc, reason = "False positive; it's only for implementors")]
-    #[must_use]
-    fn shorten<'l, 's>(
-        long: Varying<'l, 'lower, Upper, Self>,
-    ) -> Varying<'s, 'lower, Upper, Self>
+    /// Otherwise, you **must** thoroughly ensure that values of type `Varying<'varying, Self>`
+    /// can soundly have covariant casts of `'varying` performed on them, and this function can
+    /// be implemented with `{ long.cast() }`.
+    fn prove_covariance<'long, 'short>(
+        long: RawVarying<'long, 'lower, Upper, Self>,
+    ) -> RawVarying<'short, 'lower, Upper, Self>
     where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        for<'varying> Varying<'varying, 'lower, Upper, Self>: Sized;
-
-    /// Soundly shorten the `'varying` lifetime of `&Self::WithLifetime<'varying>`.
-    ///
-    /// # Implementation Safety
-    /// It is always sound to implement this function with the body `{ long }`,
-    /// relying on implicit covariant coercion (if possible).
-    ///
-    /// The function's body **MUST** be equivalent to:
-    /// ```
-    /// # struct Foo;
-    /// # impl Foo {
-    /// #     fn subset_of_assertions_in_covariant_assertions() {}
-    /// #     fn shorten(long: u8) -> u8
-    /// {
-    ///     // Usually just `Self::covariant_assertions();`
-    ///     Self::subset_of_assertions_in_covariant_assertions();
-    ///     // SAFETY: ..
-    ///     unsafe { ::core::mem::transmute(long) }
-    /// }
-    /// # }
-    /// ```
-    ///
-    /// Any assertions (or other possible causes of panics) in `Self::shorten` must be included in
-    /// `Self::covariant_assertions()`.
-    #[expect(clippy::unnecessary_safety_doc, reason = "False positive; it's only for implementors")]
-    #[must_use]
-    fn shorten_ref<'l, 's, 'r>(
-        long: &'r Varying<'l, 'lower, Upper, Self>,
-    ) -> &'r Varying<'s, 'lower, Upper, Self>
-    where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        Varying<'l, 'lower, Upper, Self>: 'r,
-        Varying<'s, 'lower, Upper, Self>: 'r;
+        Upper: 'long,
+        'long: 'short,
+        'short: 'lower;
 }
 
 /// A "lifetime family" of types parameterized by a `'varying` lifetime such that performing
@@ -420,69 +319,8 @@ pub unsafe trait CovariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<'low
 /// "contravariance" may actually refer to "the ability to soundly be contravariantly casted"
 /// instead of the variance assigned by the compiler.
 ///
-/// # Note on Bounds
-/// `'lower` and `Upper` allow for bounds on `'varying` to be expressed via implied bounds, which
-/// may be necessary for implementations to satisfy well-formedness constraints.
-///
-/// Note that `Upper` is always `&'upper ()` for some lifetime `'upper`.
-///
-/// [`MaxUpperBound`], which is an alias for `&'static ()`, is a maximally loose upper bound on
-/// `'varying`. However, there is no (and *cannot* be any) special lifetime that can be substituted
-/// into `'lower` to serve as a lower bound for all other lifetimes. Instead,
-/// `for<'lower> ContravariantFamily<'lower, Upper>` uses a maximally loose lower bound (and implied
-/// bounds ensure that this works regardless of what `Upper` is).
-///
-/// # Safety of Use
-/// Code can always use safe methods to change the `'varying` lifetime, including
-/// [`ContravariantFamily::lengthen`], [`ContravariantFamily::lengthen_ref`], and the compiler's
-/// contravariant coercion.
-///
-/// However, before performing any contravariant casts on the `'varying` lifetime through `unsafe`
-/// means (such as [`transmute`]), the [`ContravariantFamily::contravariant_assertions`] method
-/// must be called and not panic. The other two methods are not guaranteed to internally call
-/// `contravariant_assertions`.
-///
-/// # Implementation
-///
-/// **You should probably not need to directly and unsafely implement this trait.**
-///
-/// The `variance-family` crate includes a large number of `unsafe` implementations of the marker
-/// traits for the sake of ergonomics for users -- in particular, for the sake
-/// of limiting how many times that others must unsafely implement the marker traits. When that
-/// does not suffice, there are also many helper macros.
-///
-/// You should first try to express your desired lifetime as a composition of other lifetime
-/// families, such as `(Cow<'a, str>, fn(&'varying mut [u8]) -> MyStruct)` becoming
-/// `(Cow<'a, str>, fn(VaryingRefMut<[u8]>) -> Unvarying<MyStruct>)`.
-///
-// TODO: describe next steps.
-///
-/// # Implementation Safety
-/// The following three conditions must be met.
-///
-/// - If [`ContravariantFamily::contravariant_assertions`] does not panic, then `'varying` must be
-///   sound to cast contravariantly in `T<'varying>` (where `T<'varying>` is shorthand for
-///   `Varying<'varying, 'lower, Upper, T>`, and `'varying` is bounded by `'lower` and `Upper`).
-///
-/// - No assertions not included within `contravariant_assertions` may be used.
-///
-/// - The implementation safety requirements of `lengthen` and `lengthen_ref` must be met.
-///
-/// ## Precise Elaboration
-/// For any implementation of this type, it must be sound to cast the `'varying` lifetime of
-/// `Varying<'varying, 'lower, Upper, T>` to any longer lifetime which is at most as long as
-/// the lifetime of `Upper`.
-///
-/// Compile-time assertions (possibly resulting in post-monomorphization errors) may be placed
-/// in [`ContravariantFamily::contravariant_assertions`], which serve as additional preconditions
-/// for the family of types being contravariant. Runtime assertions could also be included there,
-/// though their utility would seem questionable.
-///
-/// Provided that `contravariant_assertions` does not panic, contravariant casts on `'varying` may
-/// be performed via [`transmute`] or similar means, not necessarily via the
-/// [`ContravariantFamily::lengthen`], [`ContravariantFamily::lengthen_ref`] methods.
-/// `lengthen` and `lengthen_ref` are provided in part for ergonomics and in part to help confirm
-/// that an implementation of this trait is sound.
+/// See the [`contravariant`] and [`unvarying`] macros to implement this trait in simple cases.
+/// The below documentation contains details which you might not need to know.
 ///
 /// ## Examples
 ///
@@ -501,83 +339,86 @@ pub unsafe trait CovariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<'low
 /// `unsafe` functions with safety comments properly ensuring that a type can be treated as
 /// contravariant.
 ///
+/// # Note on Bounds
+/// `'lower` and `Upper` allow for bounds on `'varying` to be expressed via implied bounds, which
+/// may be necessary for implementations to satisfy well-formedness constraints.
+///
+/// Note that `Upper` is always `&'upper ()` for some lifetime `'upper`.
+///
+/// [`MaxUpperBound`], which is an alias for `&'static ()`, is a maximally loose upper bound on
+/// `'varying`. However, there is no (and *cannot* be any) special lifetime that can be substituted
+/// into `'lower` to serve as a lower bound for all other lifetimes. Instead,
+/// `for<'lower> ContravariantFamily<'lower, Upper>` uses a maximally loose lower bound (and implied
+/// bounds ensure that this works regardless of what `Upper` is).
+///
+/// # Safety of Use
+/// Code can always use safe methods to change the `'varying` lifetime, including
+/// [`variance_family::lengthen`] and the compiler's contravariant coercion.
+///
+/// Additionally, performing contravariant casts on the `'varying` lifetime through `unsafe` means
+/// (such as [`transmute`]) is permitted.
+///
+/// # Implementation
+///
+/// **You should probably not need to directly and unsafely implement this trait.**
+///
+/// The `variance-family` crate includes a large number of `unsafe` implementations of the marker
+/// traits for the sake of ergonomics for users -- in particular, for the sake
+/// of limiting how many times that others must unsafely implement the marker traits. When that
+/// does not suffice, there are also many helper macros.
+///
+/// You should first try to express your desired lifetime as a composition of other lifetime
+/// families, such as `(Cow<'a, str>, fn(&'varying mut [u8]) -> MyStruct)` becoming
+/// `(Cow<'a, str>, fn(VaryingRefMut<[u8]>) -> Unvarying<MyStruct>)`.
+///
+/// If that fails, try to use [`contravariant`] (or [`unvarying`]). If your use case involves
+/// generics which are treated as variance families, that macro will not be sufficient, so you will
+/// need to unsafely implement this trait (and its two unsafe supertraits).
+///
+/// # Implementation Safety
+/// `'varying` must be sound to cast contravariantly in `T<'varying>` (where `T<'varying>` is
+/// shorthand for `Varying<'varying, T>`, and `'varying` is bounded by `'lower` and the lifetime
+/// of `Upper`).
+///
+/// More precisely, for any `'short, 'long, 'lower, 'other_lower, 'upper, 'other_upper` where:
+/// ```rust
+/// 'long: 'short,
+/// Self: WithLifetime<'short, 'lower, 'upper> + WithLifetime<'long, 'other_lower, 'other_upper>,
+/// ```
+/// it must be sound to cast (possibly via [`transmute`])
+/// `<Self as WithLifetime<'long, 'other_lower, 'other_upper>>::Is` to
+/// `<Self as WithLifetime<'short, 'other_lower, 'other_upper>>::Is`
+/// in covariant positions, and vice-versa in contravariant positions.
+///
+/// That is, **the `'lower` and `Upper` bounds of this trait do not constrain the range in which
+/// covariant coercion is permitted**.
+///
+/// If [`ContravariantFamily::prove_contravariance`] can be implemented with the function body
+/// `{ short }`, then the implementation is certainly sound. Otherwise, you will need to thoroughly
+/// confirm that your lifetime family is contravariant over `'varying`, and you can implement the
+/// method with `{ short.cast() }`.
+///
 /// [`transmute`]: core::mem::transmute
+/// [`contravariant`]: crate::contravariant
+/// [`unvarying`]: crate::unvarying
+/// [`variance_family::lengthen`]: crate::lengthen
 pub unsafe trait ContravariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<'lower, Upper> {
-    /// Perform compile-time assertions, which may cause post-monomorphization errors.
+    /// Method to help show that `Self<'varying>` is contravariant over `'varying` in simpler cases.
     ///
-    /// (The function could, hypothetically, also include runtime assertions.)
-    // TODO: `const` block example
-    #[inline]
-    fn contravariant_assertions() {}
-
-    /// Soundly lengthen the `'varying` lifetime of an owned `Self::WithLifetime<'varying>`.
+    /// If this method can be implemented with the body `{ short }`, then the compiler recognizes
+    /// this lifetime family as contravariant over `'varying`, so the implementation of this trait
+    /// is sound.
     ///
-    /// # Implementation Safety
-    /// It is always sound to implement this function with the body `{ short }`,
-    /// relying on implicit contravariant coercion (if possible).
-    ///
-    /// The function's body **MUST** be equivalent to:
-    /// ```
-    /// # struct Foo;
-    /// # impl Foo {
-    /// #     fn subset_of_assertions_in_contravariant_assertions() {}
-    /// #     fn lengthen(short: u8) -> u8
-    /// {
-    ///     // Usually just `Self::contravariant_assertions();`
-    ///     Self::subset_of_assertions_in_contravariant_assertions();
-    ///     // SAFETY: ..
-    ///     unsafe { ::core::mem::transmute(short) }
-    /// }
-    /// # }
-    /// ```
-    ///
-    /// Any assertions (or other possible causes of panics) in `Self::lengthen` must be included in
-    /// `Self::contravariant_assertions()`.
-    #[expect(clippy::unnecessary_safety_doc, reason = "False positive; it's only for implementors")]
-    #[must_use]
-    fn lengthen<'s, 'l>(
-        short: Varying<'s, 'lower, Upper, Self>,
-    ) -> Varying<'l, 'lower, Upper, Self>
+    /// Otherwise, you **must** thoroughly ensure that values of type `Varying<'varying, Self>`
+    /// can soundly have contravariant casts of `'varying` performed on them, and this function can
+    /// be implemented with `{ short.cast() }`.
+    fn prove_contravariance<'short, 'long>(
+        short: RawVarying<'short, 'lower, Upper, Self>,
+    ) -> RawVarying<'long, 'lower, Upper, Self>
     where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        for<'varying> Varying<'varying, 'lower, Upper, Self>: Sized;
-
-    /// Soundly lengthen the `'varying` lifetime of `&Self::WithLifetime<'varying>`.
-    ///
-    /// # Implementation Safety
-    /// It is always sound to implement this function with the body `{ short }`,
-    /// relying on implicit contravariant coercion (if possible).
-    ///
-    /// The function's body **MUST** be equivalent to:
-    /// ```
-    /// # struct Foo;
-    /// # impl Foo {
-    /// #     fn subset_of_assertions_in_contravariant_assertions() {}
-    /// #     fn lengthen(short: u8) -> u8
-    /// {
-    ///     // Usually just `Self::contravariant_assertions();`
-    ///     Self::subset_of_assertions_in_contravariant_assertions();
-    ///     // SAFETY: ..
-    ///     unsafe { ::core::mem::transmute(short) }
-    /// }
-    /// # }
-    /// ```
-    ///
-    /// Any assertions (or other possible causes of panics) in `Self::lengthen` must be included in
-    /// `Self::contravariant_assertions()`.
-    #[expect(clippy::unnecessary_safety_doc, reason = "False positive; it's only for implementors")]
-    #[must_use]
-    fn lengthen_ref<'s, 'l, 'r>(
-        short: &'r Varying<'s, 'lower, Upper, Self>,
-    ) -> &'r Varying<'l, 'lower, Upper, Self>
-    where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        Varying<'s, 'lower, Upper, Self>: 'r,
-        Varying<'l, 'lower, Upper, Self>: 'r;
+        Upper: 'long,
+        'long: 'short,
+        'short: 'lower;
 }
 
 /// A `LendFamily` is a family of `Sized` types which are parameterized by a `'varying` lifetime
@@ -590,9 +431,9 @@ pub unsafe trait ContravariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<
 /// may be necessary for implementations to satisfy well-formedness constraints. For instance,
 /// a `&'varying &'a T` lend family must have `'varying` be at most `'a`.
 ///
-/// `Upper` is always `&'upper ()` for some lifetime `'upper`, and [`MaxUpperBound`], which is an
-/// alias for `&'static ()`, is a maximally loose upper bound on `'varying`.
-pub trait LendFamily<Upper>
+/// `Upper` is always `&'upper ()` for some lifetime `'upper`, and it defaults to [`MaxUpperBound`]
+/// (an alias for `&'static ()`), which is a maximally loose upper bound on `'varying`.
+pub trait LendFamily<Upper = MaxUpperBound>
 where
     Upper: UpperBound,
     Self: for<'lower> CovariantFamily<'lower, Upper>
@@ -605,3 +446,9 @@ where
     T: for<'lower> CovariantFamily<'lower, Upper>
         + for<'varying, 'lower> WithLifetime<'varying, 'lower, Upper, Is: Sized>,
 {}
+
+/// A slightly shorter and more legible alias for
+/// `<T as WithLifetime<'varying, 'varying, Upper>>::Is`.
+///
+/// This is intended to be used with [`LendFamily`], which places no lower bound on `'varying`.
+pub type Lend<'varying, Upper, T> = <T as WithLifetime<'varying, 'varying, Upper>>::Is;

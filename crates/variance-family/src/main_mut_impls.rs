@@ -1,11 +1,11 @@
-use crate::invariant_zst;
+use core::marker::PhantomData;
+
+use crate::phantom_zst_methods;
 use crate::traits::{
-    ContravariantFamily, CovariantFamily, UnvaryingFamily, UpperBound, Varying, WithLifetime,
+    ChangeBounds, ContravariantFamily, CovariantFamily, RawMutVarying, RawVarying, UnvaryingFamily,
+    UpperBound, WithLifetime,
 };
 
-
-// We *could* use the public macros to implement everything besides the function pointer cases,
-// but I think it's valuable to show the full `unsafe` code for at least the most crucial cases.
 
 // Note: in below safety comments, "is covariant over" or "is contravariant over" means, more
 // precisely, "is sound to covariantly (or contravariantly) cast with respect to". That is,
@@ -21,115 +21,79 @@ use crate::traits::{
 //   families are used which implement `UnvaryingFamily`, making them equivalent to `&'a mut U`
 //   for some type `U`. Unsafe transmutes aren't even needed.
 
-impl<'a, 'varying, 'lower, Upper, T> WithLifetime<'varying, 'lower, Upper> for &'a mut T
+// We cannot use the `unvarying!` macro, since we need to place bounds on `T` involving
+// `'lower` and `Upper`.
+
+// SAFETY:
+// - We can assume (by the safety condition of `WithLifetime`)
+//   that `T::Is` does not use `'lower` or `Upper`,
+//   so `&'a mut T::Is` does not use `'lower` or `Upper`.
+// - `variance-family` is allowed to implement traits for this `#[fundamental]` type in `core`.
+unsafe impl<'a, 'varying, 'lower, Upper, T> WithLifetime<'varying, 'lower, Upper> for &'a mut T
 where
     Upper: UpperBound,
-    T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
-    T::Is: 'a,
+    T: ?Sized + WithLifetime<'varying, 'lower, Upper, Is: 'a>,
 {
     type Is = &'a mut T::Is;
 }
 
 // SAFETY:
-// - If `Self::covariant_assertions()` does not panic,
-//   then `Self<'varying>` is covariant over `'varying`.
-//
-//   `Self::covariant_assertions()` is trivial and never panics, and `Self<'varying>` does not
-//   actually use `'varying` at all, making it covariant over `'varying`.
-//
-// - No assertions are included.
-// - The implementation safety requirements of `shorten` and `shorten_ref` are met.
+// We can assume (by the safety condition of `WithLifetime`)
+// that `T::Is` does not use `'lower` or `Upper`,
+// so `&'a mut T::Is` does not use `'lower` or `Upper`.
+unsafe impl<'a, 'varying, 'lower, Upper, T> ChangeBounds<'varying, 'lower, Upper, &'a mut T::Is>
+for &'a mut T
+where
+    Upper: UpperBound,
+    T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
+{
+    fn prove_equal<'other_lower, OtherUpper>(
+        varying: RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
+    ) -> *mut *mut &'a mut T::Is
+    where
+        Self: WithLifetime<'varying, 'other_lower, OtherUpper>,
+        OtherUpper: UpperBound,
+    {
+       varying.cast()
+    }
+}
+
+// SAFETY:
+// `CovariantFamily::prove_covariance` is implemented with the function body `{ long }`,
+// so this implementation is certainly sound.
 unsafe impl<'a, 'lower, Upper, T> CovariantFamily<'lower, Upper> for &'a mut T
 where
     Upper: UpperBound,
-    T: ?Sized + UnvaryingFamily<'lower, Upper>,
-    for<'varying> <T as WithLifetime<'varying, 'lower, Upper>>::Is: 'a,
+    T: ?Sized + UnvaryingFamily<'lower, Upper, Is: 'a>,
 {
-    #[inline]
-    fn covariant_assertions() {}
-
-    #[inline]
-    fn shorten<'l, 's>(
-        long: Varying<'l, 'lower, Upper, Self>,
-    ) -> Varying<'s, 'lower, Upper, Self>
+    fn prove_covariance<'long, 'short>(
+        long: RawVarying<'long, 'lower, Upper, Self>,
+    ) -> RawVarying<'short, 'lower, Upper, Self>
     where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        for<'varying> Varying<'varying, 'lower, Upper, Self>: Sized,
+        Upper: 'long,
+        'long: 'short,
+        'short: 'lower,
     {
-        #![expect(clippy::unnecessary_safety_comment, reason = "implementation safety of method")]
-        // Implementation safety: implementing this with `{ long }` is always safe.
-
-        long
-    }
-
-    #[inline]
-    fn shorten_ref<'l, 's, 'r>(
-        long: &'r Varying<'l, 'lower, Upper, Self>,
-    ) -> &'r Varying<'s, 'lower, Upper, Self>
-    where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        Varying<'l, 'lower, Upper, Self>: 'r,
-        Varying<'s, 'lower, Upper, Self>: 'r,
-    {
-        #![expect(clippy::unnecessary_safety_comment, reason = "implementation safety of method")]
-        // Implementation safety: implementing this with `{ long }` is always safe.
-
         long
     }
 }
 
 // SAFETY:
-// - If `Self::contravariant_assertions()` does not panic,
-//   then `Self<'varying>` is covariant over `'varying`.
-//
-//   `Self::contravariant_assertions()` is trivial and never panics, and `Self<'varying>` does not
-//   actually use `'varying` at all, making it contravariant over `'varying`.
-//
-// - No assertions are included.
-// - The implementation safety requirements of `lengthen` and `lengthen_ref` are met.
+// `ContravariantFamily::prove_contravariance` is implemented with the function body `{ short }`,
+// so this implementation is certainly sound.
 unsafe impl<'a, 'lower, Upper, T> ContravariantFamily<'lower, Upper> for &'a mut T
 where
     Upper: UpperBound,
-    T: ?Sized + UnvaryingFamily<'lower, Upper>,
-    for<'varying> <T as WithLifetime<'varying, 'lower, Upper>>::Is: 'a,
+    T: ?Sized + UnvaryingFamily<'lower, Upper, Is: 'a>,
 {
-    #[inline]
-    fn contravariant_assertions() {}
-
-    #[inline]
-    fn lengthen<'s, 'l>(
-        short: Varying<'s, 'lower, Upper, Self>,
-    ) -> Varying<'l, 'lower, Upper, Self>
+    fn prove_contravariance<'short, 'long>(
+        short: RawVarying<'short, 'lower, Upper, Self>,
+    ) -> RawVarying<'long, 'lower, Upper, Self>
     where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        for<'varying> Varying<'varying, 'lower, Upper, Self>: Sized,
+        Upper: 'long,
+        'long: 'short,
+        'short: 'lower,
     {
-        #![expect(clippy::unnecessary_safety_comment, reason = "implementation safety of method")]
-        // Implementation safety: implementing this with `{ short }` is always safe.
-
-        short
-    }
-
-    #[inline]
-    fn lengthen_ref<'s, 'l, 'r>(
-        short: &'r Varying<'s, 'lower, Upper, Self>,
-    ) -> &'r Varying<'l, 'lower, Upper, Self>
-    where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        Varying<'l, 'lower, Upper, Self>: 'r,
-        Varying<'s, 'lower, Upper, Self>: 'r,
-    {
-        #![expect(clippy::unnecessary_safety_comment, reason = "implementation safety of method")]
-        // Implementation safety: implementing this with `{ short }` is always safe.
-
         short
     }
 }
@@ -145,75 +109,77 @@ where
 //   Unsafe transmutes aren't even needed.
 // - `&'varying mut T<'varying>` is never contravariant over `'varying`.
 
-invariant_zst!(
-    /// The `&'varying mut T<'varying>` lifetime family.
-    ///
-    /// If `T<'varying>` does not actually use `'varying` at all (making it some fixed type `U`
-    /// regardless of `'varying`), then `&'varying mut T<'varying>` is covariant over `'varying`.
-    ///
-    /// This lifetime family is never contravariant over `'varying`.
-    ///
-    /// Note that this type itself is just a marker ZST for the family.
-    pub struct VaryingRefMut<T: ?Sized>;
-);
+/// The `&'varying mut T<'varying>` lifetime family.
+///
+/// If `T<'varying>` does not actually use `'varying` at all (making it some fixed type `U`
+/// regardless of `'varying`), then `&'varying mut T<'varying>` is covariant over `'varying`.
+///
+/// This lifetime family is never contravariant over `'varying`.
+///
+/// Note that this type itself is just a marker ZST for the family.
+///
+/// # Limitations
+/// Due to current limitations of the trait solver, `VaryingRefMut<T>` requires that
+/// `T<'varying>` outlives the `'upper` bound, instead of requiring that `T<'varying>` outlives
+/// `'varying`.
+///
+/// As a result, if you want a more complicated lifetime family
+/// (such as `&'varying mut Cow<'varying, [u8]>`),
+/// you will have to define your own lifetime family type instead of composing
+/// `VaryingRefMut<_>` with other lifetime family types.
+pub struct VaryingRefMut<T: ?Sized>(PhantomData<fn(*mut T)>);
 
-impl<'varying, 'lower, Upper, T> WithLifetime<'varying, 'lower, Upper> for VaryingRefMut<T>
+phantom_zst_methods!(impl<{T: ?Sized}> _ for VaryingRefMut<{T}>);
+
+// SAFETY:
+// - We can assume (by the safety condition of `WithLifetime`)
+//   that `T::Is` does not use `'lower` or `&'upper ()`,
+//   so `&'varying T::Is` does not use `'lower` or `&'upper ()`.
+// - This is a local type.
+unsafe impl<'varying, 'lower, 'upper, T> WithLifetime<'varying, 'lower, &'upper ()>
+for VaryingRefMut<T>
 where
-    Upper: UpperBound,
-    T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
-    T::Is: 'varying,
+    T: ?Sized + WithLifetime<'varying, 'lower, &'upper (), Is: 'upper>,
 {
-    type Is = &'varying mut T::Is;
+    type Is = &'varying T::Is;
 }
 
 // SAFETY:
-// - If `Self::covariant_assertions()` does not panic,
-//   then `Self<'varying>` is covariant over `'varying`.
-//
-//   `Self::covariant_assertions()` is trivial and never panics, and `Self<'varying>` does not
-//   actually use `'varying` at all, making it covariant over `'varying`.
-//
-// - No assertions are included.
-// - The implementation safety requirements of `shorten` and `shorten_ref` are met.
-unsafe impl<'lower, Upper, T> CovariantFamily<'lower, Upper> for VaryingRefMut<T>
+// We can assume (by the safety condition of `WithLifetime`)
+// that `T::Is` does not use `'lower` or `Upper`,
+// so `&'a T::Is` does not use `'lower` or `Upper`.
+unsafe impl<'varying, 'lower, Upper, T> ChangeBounds<'varying, 'lower, Upper, &'varying T::Is>
+for VaryingRefMut<T>
 where
     Upper: UpperBound,
-    T: ?Sized + UnvaryingFamily<'lower, Upper>,
-    for<'varying> <T as WithLifetime<'varying, 'lower, Upper>>::Is: 'varying,
+    T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
 {
-    #[inline]
-    fn covariant_assertions() {}
-
-    #[inline]
-    fn shorten<'l, 's>(
-        long: Varying<'l, 'lower, Upper, Self>,
-    ) -> Varying<'s, 'lower, Upper, Self>
+    fn prove_equal<'other_lower, OtherUpper>(
+        varying: RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
+    ) -> *mut *mut &'varying T::Is
     where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        for<'varying> Varying<'varying, 'lower, Upper, Self>: Sized,
+        Self: WithLifetime<'varying, 'other_lower, OtherUpper>,
+        OtherUpper: UpperBound,
     {
-        #![expect(clippy::unnecessary_safety_comment, reason = "implementation safety of method")]
-        // Implementation safety: implementing this with `{ long }` is always safe.
-
-        long
+       varying.cast()
     }
+}
 
-    #[inline]
-    fn shorten_ref<'l, 's, 'r>(
-        long: &'r Varying<'l, 'lower, Upper, Self>,
-    ) -> &'r Varying<'s, 'lower, Upper, Self>
+// SAFETY:
+// `CovariantFamily::prove_covariance` is implemented with the function body `{ long }`,
+// so this implementation is certainly sound.
+unsafe impl<'lower, 'upper, T> CovariantFamily<'lower, &'upper ()> for VaryingRefMut<T>
+where
+    T: ?Sized + UnvaryingFamily<'lower, &'upper (), Is: 'upper>,
+{
+    fn prove_covariance<'long, 'short>(
+        long: RawVarying<'long, 'lower, &'upper (), Self>,
+    ) -> RawVarying<'short, 'lower, &'upper (), Self>
     where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        Varying<'l, 'lower, Upper, Self>: 'r,
-        Varying<'s, 'lower, Upper, Self>: 'r,
+        &'upper (): 'long,
+        'long: 'short,
+        'short: 'lower,
     {
-        #![expect(clippy::unnecessary_safety_comment, reason = "implementation safety of method")]
-        // Implementation safety: implementing this with `{ long }` is always safe.
-
         long
     }
 }
@@ -229,9 +195,14 @@ where
 // Safety summary:
 // - `*mut U` is bivariant over `'varying` (as it's entirely unused). Below, `T<'varying>`
 //   families are used which implement `UnvaryingFamily`, making them equivalent to `*mut U`
-//   for some type `U`. Unsafe transmutes aren't even needed.
+//   for some type `U`.
 
-impl<'varying, 'lower, Upper, T> WithLifetime<'varying, 'lower, Upper> for *mut T
+// SAFETY:
+// - We can assume (by the safety condition of `WithLifetime`)
+//   that `T::Is` does not use `'lower` or `Upper`,
+//   so `*mut T::Is` does not use `'lower` or `Upper`.
+// - `variance-family` is allowed to implement traits for this type in `core`.
+unsafe impl<'varying, 'lower, Upper, T> WithLifetime<'varying, 'lower, Upper> for *mut T
 where
     Upper: UpperBound,
     T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
@@ -240,151 +211,62 @@ where
 }
 
 // SAFETY:
-// - If `Self::covariant_assertions()` does not panic,
-//   then `Self<'varying>` is covariant over `'varying`.
-//
-//   `Self::covariant_assertions()` is trivial and never panics, and `Self<'varying>` does not
-//   actually use `'varying` at all, making it covariant over `'varying`.
-//
-// - No assertions are included.
-// - The implementation safety requirements of `shorten` and `shorten_ref` are met.
+// We can assume (by the safety condition of `WithLifetime`)
+// that `T::Is` does not use `'lower` or `Upper`,
+// so `*mut T::Is` does not use `'lower` or `Upper`.
+unsafe impl<'varying, 'lower, Upper, T> ChangeBounds<'varying, 'lower, Upper, *mut T::Is>
+for *mut T
+where
+    Upper: UpperBound,
+    T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
+{
+    fn prove_equal<'other_lower, OtherUpper>(
+        varying: RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
+    ) -> *mut *mut *mut T::Is
+    where
+        Self: WithLifetime<'varying, 'other_lower, OtherUpper>,
+        OtherUpper: UpperBound,
+    {
+       varying.cast()
+    }
+}
+
+// SAFETY:
+// `CovariantFamily::prove_covariance` is implemented with the function body `{ long }`,
+// so this implementation is certainly sound.
 unsafe impl<'lower, Upper, T> CovariantFamily<'lower, Upper> for *mut T
 where
     Upper: UpperBound,
     T: ?Sized + UnvaryingFamily<'lower, Upper>,
 {
-    #[inline]
-    fn covariant_assertions() {}
-
-    /// Shorten the `'varying` lifetime of `*mut T<'varying>`.
-    ///
-    /// If the given pointer points to a valid value of type `Varying<'l, 'lower, Upper, T>`
-    /// (also referred to as `T<'l>`), the returned pointer (which is the given pointer with a
-    /// casted type) points to a valid value of type  `Varying<'s, 'lower, Upper, T>`
-    /// (also referred to as `T<'s>`).
-    ///
-    /// As the returned pointer is not modified (other than to change its type), any other
-    /// qualities relevant for reads or writes through the pointer (such as alignment or provenance)
-    /// are unchanged.
-    ///
-    /// `unsafe` code can rely on this guarantee.
-    #[inline]
-    fn shorten<'l, 's>(
-        long: Varying<'l, 'lower, Upper, Self>,
-    ) -> Varying<'s, 'lower, Upper, Self>
+    fn prove_covariance<'long, 'short>(
+        long: RawVarying<'long, 'lower, Upper, Self>,
+    ) -> RawVarying<'short, 'lower, Upper, Self>
     where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        for<'varying> Varying<'varying, 'lower, Upper, Self>: Sized,
+        Upper: 'long,
+        'long: 'short,
+        'short: 'lower,
     {
-        #![expect(clippy::unnecessary_safety_comment, reason = "implementation safety of method")]
-        // Implementation safety: implementing this with `{ long }` is always safe.
-
-        long
-    }
-
-    /// Shorten the `'varying` lifetime of `&(*mut T<'varying>)`.
-    ///
-    /// If the referenced pointer points to a valid value of type `Varying<'l, 'lower, Upper, T>`
-    /// (also referred to as `T<'l>`), that pointer (whose reference is returned with a casted
-    /// type) also points to a valid value of type `Varying<'s, 'lower, Upper, T>` (also referred
-    /// to as `T<'s>`).
-    ///
-    /// As the returned reference to the pointer is not modified (other than to change the
-    /// pointer's type), any other qualities relevant for reads or writes through the pointer
-    /// (such as alignment or provenance) are unchanged.
-    ///
-    /// `unsafe` code can rely on this guarantee.
-    #[inline]
-    fn shorten_ref<'l, 's, 'r>(
-        long: &'r Varying<'l, 'lower, Upper, Self>,
-    ) -> &'r Varying<'s, 'lower, Upper, Self>
-    where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        Varying<'l, 'lower, Upper, Self>: 'r,
-        Varying<'s, 'lower, Upper, Self>: 'r,
-    {
-        #![expect(clippy::unnecessary_safety_comment, reason = "implementation safety of method")]
-        // Implementation safety: implementing this with `{ long }` is always safe.
-
         long
     }
 }
 
 // SAFETY:
-// - If `Self::contravariant_assertions()` does not panic,
-//   then `Self<'varying>` is covariant over `'varying`.
-//
-//   `Self::contravariant_assertions()` is trivial and never panics, and `Self<'varying>` does not
-//   actually use `'varying` at all, making it contravariant over `'varying`.
-//
-// - No assertions are included.
-// - The implementation safety requirements of `lengthen` and `lengthen_ref` are met.
+// `ContravariantFamily::prove_contravariance` is implemented with the function body `{ short }`,
+// so this implementation is certainly sound.
 unsafe impl<'lower, Upper, T> ContravariantFamily<'lower, Upper> for *mut T
 where
     Upper: UpperBound,
     T: ?Sized + UnvaryingFamily<'lower, Upper>,
 {
-    #[inline]
-    fn contravariant_assertions() {}
-
-    /// Lengthen the `'varying` lifetime of `*const T<'varying>`.
-    ///
-    /// If the given pointer points to a valid value of type `Varying<'s, 'lower, Upper, T>`
-    /// (also referred to as `T<'s>`), the returned pointer (which is the given pointer with a
-    /// casted type) points to a valid value of type `Varying<'l, 'lower, Upper, T>`
-    /// (also referred to as `T<'l>`).
-    ///
-    /// As the returned pointer is not modified (other than to change its type), any other
-    /// qualities relevant for reads or writes through the pointer (such as alignment or provenance)
-    /// are unchanged.
-    ///
-    /// `unsafe` code can rely on this guarantee.
-    #[inline]
-    fn lengthen<'s, 'l>(
-        short: Varying<'s, 'lower, Upper, Self>,
-    ) -> Varying<'l, 'lower, Upper, Self>
+    fn prove_contravariance<'short, 'long>(
+        short: RawVarying<'short, 'lower, Upper, Self>,
+    ) -> RawVarying<'long, 'lower, Upper, Self>
     where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        for<'varying> Varying<'varying, 'lower, Upper, Self>: Sized,
+        Upper: 'long,
+        'long: 'short,
+        'short: 'lower,
     {
-        #![expect(clippy::unnecessary_safety_comment, reason = "implementation safety of method")]
-        // Implementation safety: implementing this with `{ short }` is always safe.
-
-        short
-    }
-
-    /// Lengthen the `'varying` lifetime of `&(*const T<'varying>)`.
-    ///
-    /// If the referenced pointer points to a valid value of type `Varying<'s, 'lower, Upper, T>`
-    /// (also referred to as `T<'s>`), that pointer (whose reference is returned with a casted
-    /// type) also points to a valid value of type `Varying<'l, 'lower, Upper, T>` (also referred
-    /// to as `T<'l>`).
-    ///
-    /// As the returned reference to the pointer is not modified (other than to change the
-    /// pointer's type), any other qualities relevant for reads or writes through the pointer
-    /// (such as alignment or provenance) are unchanged.
-    ///
-    /// `unsafe` code can rely on this guarantee.
-    #[inline]
-    fn lengthen_ref<'s, 'l, 'r>(
-        short: &'r Varying<'s, 'lower, Upper, Self>,
-    ) -> &'r Varying<'l, 'lower, Upper, Self>
-    where
-        Upper: 'l,
-        'l: 's,
-        's: 'lower,
-        Varying<'l, 'lower, Upper, Self>: 'r,
-        Varying<'s, 'lower, Upper, Self>: 'r,
-    {
-        #![expect(clippy::unnecessary_safety_comment, reason = "implementation safety of method")]
-        // Implementation safety: implementing this with `{ short }` is always safe.
-
         short
     }
 }

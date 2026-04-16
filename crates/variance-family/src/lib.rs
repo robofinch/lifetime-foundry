@@ -27,13 +27,15 @@ extern crate std;
 mod traits;
 /// An `Unvarying` type that implements `UnvaryingFamily`, greatly useful for trivial families not
 /// implemented here.
-mod unvarying;
-/// `covariant`, `contravariant`, and `unvarying` macros that cover common cases, in addition to
-/// `recursive_covariant`, `recursive_contravariant`, `recursive_unvarying`, and
-/// `covariant_for_recursive_unvarying` macros that require some `unsafe` to use.
+mod unvarying_family;
+/// `covariant`, `contravariant`, and `unvarying` macros that cover simple cases.
 ///
 /// Additionally, an `invariant_zst` macro mainly used for their backend is included.
 mod macros;
+/// `shorten`, `lengthen`, `shorten_lend`, `change_bounds_from`, and `change_bounds_into` functions.
+///
+/// These are useful for consumers of lifetime families.
+mod helper_functions;
 
 // Note: the below implementations do NOT need to be exhaustive in order for this crate
 // to be usable with arbitrary types. The implementations are solely for ergonomics, and are
@@ -49,38 +51,68 @@ mod main_mut_impls;
 mod main_fn_impls;
 
 /// Implementations for:
-/// `[T]`, `[T; N]`, `(T1, ..., Tn)`, `bool`, `char`, floats, ints, uints, `str`,
-/// `cell::{Cell, Ref, RefCell, RefMut}`, `option::Option`, `pin::Pin`, `result::Result`,
 ///
-/// and with the `more_impls` feature:
-/// `cmp::Ordering`, `convert::Infallible`, `mem::{ManuallyDrop, MaybeUninit}`, `num::NonZero*`,
-/// `ptr::NonNull`, `slice::Iter`, `sync::atomic::*`.
+/// - `[T]`,
+/// - `[T; N]`,
+/// - `(T1, ..., Tn)`,
+/// - primitives (`bool`, `char`, `f32`, `f64`, `i{N}`, `u{N}`, `str`)
+/// - `cell::{Cell, Ref, RefCell, RefMut}`,
+/// - `option::Option`,
+/// - `pin::Pin`,
+/// - `result::Result`.
+///
+/// With the `more_impls` feature, also:
+///
+/// - `cmp::Ordering`,
+/// - `convert::Infallible`,
+/// - `mem::{ManuallyDrop, MaybeUninit}`,
+/// - `num::NonZero*`,
+/// - `ptr::NonNull`,
+/// - `slice::Iter`,
+/// - `sync::atomic::*`.
 mod core_impls;
 
 /// Implementations for:
-/// `boxed::Box`, `borrow::Cow`, `rc::Rc`, `string::String`, `sync::Arc`, `vec::Vec`,
 ///
-/// and with the `more_impls` feature:
-/// `collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque}`, `rc::Weak`, `sync::Weak`.
+/// - `boxed::Box`,
+/// - `borrow::Cow`,
+/// - `rc::Rc`,
+/// - `string::String`,
+/// - `sync::Arc`,
+/// - `vec::Vec`,
+///
+/// With the `more_impls` feature, also:
+///
+/// - `collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque}`,
+/// - `rc::Weak`,
+/// - `sync::Weak`.
 #[cfg(feature = "alloc")]
 mod alloc_impls;
 
 /// Implementations for:
-/// `path::{Path, PathBuf}`, `sync::{Mutex, MutexGuard}`,
 ///
-/// and with the `more_impls` feature:
-/// `cell::{OnceCell, LazyCell}`, `collections::{HashMap, HashSet}`, `io::Cursor`,
-/// `sync::{Condvar, OnceLock, RwLock, RwLock{Read, Write}Guard, LazyLock}`.
+/// - `path::{Path, PathBuf}`,
+/// - `sync::{Mutex, MutexGuard}`.
+///
+/// With the `more_impls` feature, also:
+///
+/// - `cell::{OnceCell, LazyCell}`,
+/// - `collections::{HashMap, HashSet}`,
+/// - `io::Cursor`,
+/// - `sync::{Condvar, OnceLock, RwLock, RwLock{Read, Write}Guard, LazyLock}`.
 #[cfg(feature = "std")]
 mod std_impls;
 
 
-pub use self::traits::{
-    ContravariantFamily, CovariantFamily, ImplyBound, LendFamily, LifetimeFamily,
-    MaxUpperBound, UnvaryingFamily, UpperBound, Varying, WithLifetime,
+pub use self::{main_const_impls::VaryingRef, main_mut_impls::VaryingRefMut};
+pub use self::{
+    helper_functions::{change_bounds_from, change_bounds_into, lengthen, shorten, shorten_lend},
+    traits::{
+        ChangeBounds, ContravariantFamily, CovariantFamily, Lend, LendFamily, LifetimeFamily,
+        MaxUpperBound, RawMutVarying, RawVarying, UnvaryingFamily, UpperBound, Varying,
+        WithLifetime,
+    },
 };
-pub use self::main_const_impls::VaryingRef;
-pub use self::main_mut_impls::VaryingRefMut;
 
 /// Module for the `Cow<'varying, T>` family, called `VaryingCow<T>`.
 pub mod borrow {}
