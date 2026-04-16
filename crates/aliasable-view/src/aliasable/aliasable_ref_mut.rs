@@ -5,7 +5,7 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use variance_family::VaryingRef;
+// use variance_family::VaryingRef;
 
 use crate::traits::{AliasableView, AliasableViewMut, View, ViewMut};
 

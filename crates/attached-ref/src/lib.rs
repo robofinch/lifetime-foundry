@@ -15,17 +15,18 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-mod erase;
-mod variance;
-mod uninhabited_ref;
+// mod slot;
+// mod erased_slot;
 
-mod slot;
-mod attached_ref_slot;
+// mod variance;
+// mod uninhabited_ref;
+
+// mod attached_ref_slot;
 
 
-pub use self::{
-    erase::{DefaultErase, EraseSelfRef, LifetimeErase},
-    slot::SelfRefSlot,
-    uninhabited_ref::{NeverExclusiveRef, NeverNoRef, NeverSharedRef},
-    variance::{Covariant, DataBound, DataVariance, Invariant},
-};
+// pub use self::{
+//     // erase::{DefaultErase, EraseSelfRef, LifetimeErase},
+//     slot::SelfRefSlot,
+//     uninhabited_ref::{NeverExclusiveRef, NeverNoRef, NeverSharedRef},
+//     variance::{Covariant, DataBound, DataVariance, Invariant},
+// };
