@@ -1,3 +1,7 @@
+//! Implementations for `fn(..Args) -> R` for arities 0-12.
+
+#![expect(unsafe_code, reason = "allow unsafe code to rely on impls of lifetime family traits")]
+
 use crate::traits::{
     ChangeBounds, ContravariantFamily, CovariantFamily, UpperBound, RawMutVarying, RawVarying,
     WithLifetime,

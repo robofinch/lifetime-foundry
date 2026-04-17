@@ -16,13 +16,18 @@ invariance over a generic parameter in your own structs or enums. There is no si
 for covariance or contravariance.
 
 This crate enables you to place requirements on a generic type's variance over a `'varying`
-lifetime. (Type parameters cannot easily be supported in a useful way without `for<T>` binders.)
+lifetime while thoroughly supporting non-`'static` data.
+(Type parameters cannot easily be supported in a useful way without `for<T>` binders.)
 
 # Overview
 
 Using [`CovariantFamily`], [`ContravariantFamily`], and [`UnvaryingFamily`], you can require that a
 family of types parameterized by a `'varying` lifetime be effectively covariant over `'varying`,
 be effectively contravariant over `'varying`, or leave `'varying` entirely unused.
+
+The parameterized type is called `T<'varying>`, which is an abbreviation for
+`Varying<'varying, 'lower, Upper, T>`. (The `'lower` and `Upper` bounds are solely used to place
+bounds on `'varying`, which allows the lifetime families to thoroughly support non-`'static` data.)
 
 Requiring invariance is not supported, since, as mentioned, forcing invariance does not require a
 fancy trait.
@@ -45,21 +50,21 @@ the *compiler* can prove covariance or contravariance over `'varying`. A type pa
 the type's interface remains sound when `'varying` is changed covariantly; such a type can soundly
 implement `CovariantFamily`.
 
+### Safe Usage
+
+You can use [`variance_family::shorten`], [`variance_family::lengthen`],
+[`variance_family::shorten_lend`], or the compiler's provided coercions to change the `'varying`
+lifetime. Additionally, [`variance_family::change_bounds_from`] and
+[`variance_family::change_bounds_into`] are provided to change the `'lower` and `Upper` bounds
+of `Varying<'varying, 'lower, Upper, T>`.
+
 ### Guarantees for `unsafe` Code
 
 If a family of types implements [`CovariantFamily`] (or [`ContravariantFamily`]), then its
 `'varying` lifetime may be soundly manipulated in a covariant (or contravariant) way via
-`transmute` and similar means *so long as `covariant_assertions()` (or
-`contravariant_assertions()`) is called on that family and does not panic*. The latter constraint
-allows for post-monomorphization errors.
-
-### Guarantees for Safe Code
-
-Using any safe means to change the `'varying` lifetime (including methods of `CovariantFamily`,
-methods of `ContravariantFamily`, and the compiler's provided coercions) does not require calling
-`covariant_assertions()` or `contravariant_assertions()`. (Such a requirement would unsoundly
-place a safety requirement on safe code.) The assertion methods are only required for `unsafe`
-code.
+`transmute` and similar means. Additionally, a `Varying<'varying, 'lower, Upper, T>` type
+must not actually use `'lower` or `Upper`, such that the lower and upper bounds can be freely
+changed via `transmute` and similar means.
 
 ### `UnvaryingFamily`
 
@@ -109,11 +114,9 @@ mind when working with higher-ranked types alongside this crate.
 These types are not implemented exhaustively. In particular, third-party structs and enums
 cannot be covered by `CovariantFamily` and `ContravariantFamily` implementations here, and
 exhaustively implementing traits for types in `std` is not a goal of this crate. Instead,
-when the lifetime families provided here are not sufficient, utilities are provided for soundly
-creating custom lifetime families over whatever types you wish (including types not defined in
-the same crate as the custom lifetime family).
-
-TODO: (create and) discuss helper macros and composing lifetime families together
+when the lifetime families provided here are not sufficient, you can create a custom lifetime
+family over whatever types you wish (including types not defined in the same crate as the custom
+lifetime family).
 
 # License
 

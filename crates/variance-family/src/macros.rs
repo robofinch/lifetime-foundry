@@ -1,3 +1,12 @@
+//! [`covariant`], [`contravariant`], and [`unvarying`] macros that cover simple cases.
+//!
+//! Additionally, a [`phantom_zst_methods`] macro for phantom variance family markers.
+
+#![expect(
+    unsafe_code,
+    reason = "create marker function for triggering `unsafe_code` lints for users",
+)]
+
 /// Implement a simple covariant family.
 ///
 /// The family must be proven covariant by the compiler, and it must be well-formed for *any*
@@ -78,7 +87,7 @@
 /// Therefore, to be thoroughly sound, this macro requires a
 /// `#[unsafe(not_a_foreign_fundamental_type)]` annotation on the family type.
 ///
-/// (Though, that annotation is sligtly inaccurate for internal usage of this macro in
+/// (Though, that annotation is slightly inaccurate for internal usage of this macro in
 /// `variance-family`.)
 ///
 /// [`WithLifetime`]: crate::traits::WithLifetime
@@ -112,6 +121,8 @@ macro_rules! contravariant {
     };
 }
 
+#[doc(hidden)]
+#[macro_export]
 macro_rules! __either_variance_family {
     {
         @ Covariant
@@ -123,25 +134,34 @@ macro_rules! __either_variance_family {
             $({$($varying_wb:tt)*}),*$(,)?
         }
     } => {
-        $crate::__impl_with_lifetime {
-            impl<$varying, {$($params)*}> _ <'_, _>
-            for #[unsafe(not_a_foreign_fundamental_type)] $family_type
-            as $varying_type
-            where {$($non_varying_wb)*}
-            and for<$wb_varying> {
-                $({$($varying_wb)*},)*
-            }
-        }
+        // SAFETY: Asserted by user of this macro.
+        const _: () = unsafe { $crate::assert_not_a_foreign_fundamental_type() };
 
-        $crate::__impl_covariant_family {
-            impl<$varying, {$($params)*}> CovariantFamily<'_, _>
-            for #[unsafe(not_a_foreign_fundamental_type)] $family_type
-            as $varying_type
-            where {$($non_varying_wb)*}
-            and for<$wb_varying> {
-                $({$($varying_wb)*},)*
+        #[expect(
+            unsafe_code,
+            reason = "safely encapsulated, aside from `#[unsafe(not_a_foreign_fundamental_type)]`",
+        )]
+        const _: () = {
+            $crate::__impl_with_lifetime! {
+                impl<$varying, {$($params)*}> _ <'_, _>
+                for #[unsafe(not_a_foreign_fundamental_type)] $family_type
+                as $varying_type
+                where {$($non_varying_wb)*}
+                and for<$wb_varying> {
+                    $({$($varying_wb)*},)*
+                }
             }
-        }
+
+            $crate::__impl_covariant_family! {
+                impl<$varying, {$($params)*}> CovariantFamily<'_, _>
+                for #[unsafe(not_a_foreign_fundamental_type)] $family_type
+                as $varying_type
+                where {$($non_varying_wb)*}
+                and for<$wb_varying> {
+                    $({$($varying_wb)*},)*
+                }
+            }
+        };
     };
 
     {
@@ -154,25 +174,34 @@ macro_rules! __either_variance_family {
             $({$($varying_wb:tt)*}),*$(,)?
         }
     } => {
-        $crate::__impl_with_lifetime {
-            impl<$varying, {$($params)*}> _ <'_, _>
-            for #[unsafe(not_a_foreign_fundamental_type)] $family_type
-            as $varying_type
-            where {$($non_varying_wb)*}
-            and for<$wb_varying> {
-                $({$($varying_wb)*},)*
-            }
-        }
+        // SAFETY: Asserted by user of this macro.
+        const _: () = unsafe { $crate::assert_not_a_foreign_fundamental_type() };
 
-        $crate::__impl_contravariant_family {
-            impl<$varying, {$($params)*}> ContravariantFamily<'_, _>
-            for #[unsafe(not_a_foreign_fundamental_type)] $family_type
-            as $varying_type
-            where {$($non_varying_wb)*}
-            and for<$wb_varying> {
-                $({$($varying_wb)*},)*
+        #[expect(
+            unsafe_code,
+            reason = "safely encapsulated, aside from `#[unsafe(not_a_foreign_fundamental_type)]`",
+        )]
+        const _: () = {
+            $crate::__impl_with_lifetime! {
+                impl<$varying, {$($params)*}> _ <'_, _>
+                for #[unsafe(not_a_foreign_fundamental_type)] $family_type
+                as $varying_type
+                where {$($non_varying_wb)*}
+                and for<$wb_varying> {
+                    $({$($varying_wb)*},)*
+                }
             }
-        }
+
+            $crate::__impl_contravariant_family! {
+                impl<$varying, {$($params)*}> ContravariantFamily<'_, _>
+                for #[unsafe(not_a_foreign_fundamental_type)] $family_type
+                as $varying_type
+                where {$($non_varying_wb)*}
+                and for<$wb_varying> {
+                    $({$($varying_wb)*},)*
+                }
+            }
+        };
     };
 
     {
@@ -292,6 +321,8 @@ macro_rules! __either_variance_family {
 ///
 /// # Safety
 /// Same as [`covariant`]; a `#[unsafe(not_a_foreign_fundamental_type)]` marker is required.
+///
+/// (This macro intentionally does not `expect` the `unsafe_code` lint or similar.)
 #[macro_export]
 macro_rules! unvarying {
     {
@@ -300,29 +331,39 @@ macro_rules! unvarying {
         as $varying_type:ty
         where {$($non_varying_wb:tt)*}
     } => {
-        $crate::__impl_with_lifetime {
-            impl<'varying, {$($params)*}> _ <'_, _>
-            for #[unsafe(not_a_foreign_fundamental_type)] $family_type
-            as $varying_type
-            where {$($non_varying_wb)*}
-            and for<'varying> {}
-        }
+        // SAFETY: Asserted by user of this macro.
+        const _: () = unsafe { $crate::assert_not_a_foreign_fundamental_type() };
 
-        $crate::__impl_covariant_family {
-            impl<'varying, {$($params)*}> CovariantFamily <'_, _>
-            for #[unsafe(not_a_foreign_fundamental_type)] $family_type
-            as $varying_type
-            where {$($non_varying_wb)*}
-            and for<'varying> {}
-        }
+        #[expect(
+            unsafe_code,
+            reason = "safely encapsulated, aside from `#[unsafe(not_a_foreign_fundamental_type)]`",
+        )]
+        #[expect(single_use_lifetimes, reason = "`'varying` is unused")]
+        const _: () = {
+                $crate::__impl_with_lifetime! {
+                impl<'varying, {$($params)*}> _ <'_, _>
+                for #[unsafe(not_a_foreign_fundamental_type)] $family_type
+                as $varying_type
+                where {$($non_varying_wb)*}
+                and for<'varying> {}
+            }
 
-        $crate::__impl_contravariant_family {
-            impl<'varying, {$($params)*}> ContravariantFamily <'_, _>
-            for #[unsafe(not_a_foreign_fundamental_type)] $family_type
-            as $varying_type
-            where {$($non_varying_wb)*}
-            and for<'varying> {}
-        }
+            $crate::__impl_covariant_family! {
+                impl<'varying, {$($params)*}> CovariantFamily <'_, _>
+                for #[unsafe(not_a_foreign_fundamental_type)] $family_type
+                as $varying_type
+                where {$($non_varying_wb)*}
+                and for<'varying> {}
+            }
+
+            $crate::__impl_contravariant_family! {
+                impl<'varying, {$($params)*}> ContravariantFamily <'_, _>
+                for #[unsafe(not_a_foreign_fundamental_type)] $family_type
+                as $varying_type
+                where {$($non_varying_wb)*}
+                and for<'varying> {}
+            }
+        };
     };
 
     {
@@ -331,7 +372,7 @@ macro_rules! unvarying {
         $(as $varying_type:ty)?
         $(where {$($non_varying_wb:tt)*})?
     } => {
-        $crate::__either_variance_family! {
+        $crate::unvarying! {
             impl<{}> (Co+Contra)variantFamily <'_, _>
             for #[unsafe(not_a_foreign_fundamental_type)] $family_type
             $(as $varying_type)?
@@ -344,7 +385,7 @@ macro_rules! unvarying {
         for #[unsafe(not_a_foreign_fundamental_type)] $family_type:ty
         $(where {$($non_varying_wb:tt)*})?
     } => {
-        $crate::__either_variance_family! {
+        $crate::unvarying! {
             impl<{$($params)*}> (Co+Contra)variantFamily <'_, _>
             for #[unsafe(not_a_foreign_fundamental_type)] $family_type
             as $family_type
@@ -357,7 +398,7 @@ macro_rules! unvarying {
         for #[unsafe(not_a_foreign_fundamental_type)] $family_type:ty
         as $varying_type:ty
     } => {
-        $crate::__either_variance_family! {
+        $crate::unvarying! {
             impl<{$($params)*}> (Co+Contra)variantFamily <'_, _>
             for #[unsafe(not_a_foreign_fundamental_type)] $family_type
             as $varying_type
@@ -382,11 +423,11 @@ macro_rules! __impl_with_lifetime {
         // could be different each time we use them. Such a scenario cannot cause unsoundness,
         // though, since we do not rely on delicate reasoning about the types;
         // we entirely leave it to the compiler to prove the necessary information.
-        // SAFETY: Thanks to mixed macro hygeine, the `Upper` generic we introduce cannot possibly
+        // SAFETY: Thanks to mixed macro hygiene, the `Upper` generic we introduce cannot possibly
         // be used in `$varying_type`. Additionally, a combination of orphan rules and the
         // `#[unsafe(not_a_foreign_fundamental_type)]` annotation ensure that the other safety
         // condition is met.
-        unsafe impl<$varying, Upper: $crate::UpperBound, $($params:tt)*>
+        unsafe impl<$varying, Upper: $crate::UpperBound, $($params)*>
         $crate::WithLifetime<$varying, '_, Upper> for $family_type
         where
             $(
@@ -399,8 +440,8 @@ macro_rules! __impl_with_lifetime {
 
         // SAFETY: `ChangeBounds::prove_equal` is implemented with the function body `{ varying }`,
         // so this implementation is certainly sound.
-        unsafe impl<$varying, 'lower, Upper: $crate::UpperBound, $($params:tt)*>
-        $crate::ChangeBounds<$varying, 'lower, Upper, $varying_type> for $family_type
+        unsafe impl<$varying, Upper: $crate::UpperBound, $($params)*>
+        $crate::ChangeBounds<$varying, '_, Upper, $varying_type> for $family_type
         where
             $(
                 $($varying_wb)*,
@@ -411,7 +452,8 @@ macro_rules! __impl_with_lifetime {
                 varying: $crate::RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
             ) -> *mut *mut $varying_type
             where
-                Self: $crate::WithLifetime<'varying, 'other_lower, OtherUpper>,
+                // Make the lifetime early-bound.
+                'other_lower: 'other_lower,
                 OtherUpper: $crate::UpperBound,
             {
                 varying
@@ -501,6 +543,10 @@ macro_rules! __impl_contravariant_family {
         }
     };
 }
+
+/// Denotes that `#[unsafe(not_a_foreign_fundamental_type)]` was used.
+#[doc(hidden)]
+pub const unsafe fn assert_not_a_foreign_fundamental_type() {}
 
 /// Implement a variety of `core` traits for a tuple ZST struct whose sole field is
 /// [`PhantomData`](::core::marker::PhantomData).

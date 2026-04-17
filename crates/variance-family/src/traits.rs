@@ -1,3 +1,7 @@
+//! The traits which are the central purpose of this crate.
+
+#![expect(unsafe_code, reason = "allow unsafe code to rely on impls of lifetime family traits")]
+
 // ================================================================
 //  Support
 // ================================================================
@@ -167,7 +171,9 @@ where
 /// for some `'upper`), the type `Varying<'varying, Self>` is simply equal to
 /// `Self::WithAnyLifetime`.
 ///
-/// All possible implementations of this trait are already provided.
+/// All possible implementations of this trait are provided indirectly, based on [`WithLifetime`].
+/// See the [`unvarying`] macro or [`variance_family::Unvarying`] type to get implementations of
+/// this trait.
 ///
 /// # Note on Lower Bound
 /// [`MaxUpperBound`], which is an alias for `&'static ()`, is a maximally loose upper bound on
@@ -175,6 +181,9 @@ where
 /// into `'lower` to serve as a lower bound for all other lifetimes. Instead,
 /// `for<'lower> UnvaryingFamily<'lower, Upper>` uses a maximally loose lower bound (and implied
 /// bounds ensure that this works regardless of what `Upper` is).
+///
+/// [`variance_family::Unvarying`]: crate::Unvarying
+/// [`unvarying`]: crate::unvarying
 pub trait UnvaryingFamily<'lower, Upper: UpperBound>:
     LifetimeFamily<'lower, Upper>
         + for<'varying> WithLifetime<'varying, 'lower, Upper, Is = Self::WithAnyLifetime>

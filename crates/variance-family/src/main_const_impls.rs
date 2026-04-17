@@ -1,3 +1,7 @@
+//! Implementations for `&'a T`, `&'varying T` (as [`VaryingRef<T>`]), and `*const T`.
+
+#![expect(unsafe_code, reason = "allow unsafe code to rely on impls of lifetime family traits")]
+
 use core::marker::PhantomData;
 
 use crate::phantom_zst_methods;

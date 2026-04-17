@@ -15,7 +15,6 @@
 #![cfg_attr(doc, doc = include_str!("../README.md"))]
 
 #![no_std]
-#![expect(unsafe_code, reason = "allow unsafe code to rely on the marker trait impls")]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -23,18 +22,9 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-/// The traits which are the central purpose of this crate.
 mod traits;
-/// An `Unvarying` type that implements `UnvaryingFamily`, greatly useful for trivial families not
-/// implemented here.
 mod unvarying_family;
-/// `covariant`, `contravariant`, and `unvarying` macros that cover simple cases.
-///
-/// Additionally, an `invariant_zst` macro mainly used for their backend is included.
 mod macros;
-/// `shorten`, `lengthen`, `shorten_lend`, `change_bounds_from`, and `change_bounds_into` functions.
-///
-/// These are useful for consumers of lifetime families.
 mod helper_functions;
 
 // Note: the below implementations do NOT need to be exhaustive in order for this crate
@@ -43,68 +33,23 @@ mod helper_functions;
 // In the event that a new lifetime family *is* needed, then hopefully the `macros` module
 // makes it easier.
 
-/// Implementations for `&'a T`, `&'varying T` (as `VaryingRef<T>`), and `*const T`.
 mod main_const_impls;
-/// Implementations for `&'a mut T`, `&'varying mut T` (as `VaryingMut<T>`), and `*mut T`.
 mod main_mut_impls;
-/// Implementations for `fn(..Args) -> R` for arities 0-12.
 mod main_fn_impls;
 
-/// Implementations for:
-///
-/// - `[T]`,
-/// - `[T; N]`,
-/// - `(T1, ..., Tn)`,
-/// - primitives (`bool`, `char`, `f32`, `f64`, `i{N}`, `u{N}`, `str`)
-/// - `cell::{Cell, Ref, RefCell, RefMut}`,
-/// - `option::Option`,
-/// - `pin::Pin`,
-/// - `result::Result`.
-///
-/// With the `more_impls` feature, also:
-///
-/// - `cmp::Ordering`,
-/// - `convert::Infallible`,
-/// - `mem::{ManuallyDrop, MaybeUninit}`,
-/// - `num::NonZero*`,
-/// - `ptr::NonNull`,
-/// - `slice::Iter`,
-/// - `sync::atomic::*`.
 mod core_impls;
-
-/// Implementations for:
-///
-/// - `boxed::Box`,
-/// - `borrow::Cow`,
-/// - `rc::Rc`,
-/// - `string::String`,
-/// - `sync::Arc`,
-/// - `vec::Vec`,
-///
-/// With the `more_impls` feature, also:
-///
-/// - `collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque}`,
-/// - `rc::Weak`,
-/// - `sync::Weak`.
 #[cfg(feature = "alloc")]
 mod alloc_impls;
-
-/// Implementations for:
-///
-/// - `path::{Path, PathBuf}`,
-/// - `sync::{Mutex, MutexGuard}`.
-///
-/// With the `more_impls` feature, also:
-///
-/// - `cell::{OnceCell, LazyCell}`,
-/// - `collections::{HashMap, HashSet}`,
-/// - `io::Cursor`,
-/// - `sync::{Condvar, OnceLock, RwLock, RwLock{Read, Write}Guard, LazyLock}`.
 #[cfg(feature = "std")]
 mod std_impls;
 
 
-pub use self::{main_const_impls::VaryingRef, main_mut_impls::VaryingRefMut};
+pub use self::{
+    macros::assert_not_a_foreign_fundamental_type,
+    main_const_impls::VaryingRef,
+    main_mut_impls::VaryingRefMut,
+    unvarying_family::Unvarying,
+};
 pub use self::{
     helper_functions::{change_bounds_from, change_bounds_into, lengthen, shorten, shorten_lend},
     traits::{

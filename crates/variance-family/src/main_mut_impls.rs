@@ -1,3 +1,7 @@
+//! Implementations for `&'a mut T`, `&'varying mut T` (as [`VaryingRefMut<T>`]), and `*mut T`.
+
+#![expect(unsafe_code, reason = "allow unsafe code to rely on impls of lifetime family traits")]
+
 use core::marker::PhantomData;
 
 use crate::phantom_zst_methods;

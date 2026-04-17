@@ -1,3 +1,10 @@
+//! [`shorten`], [`lengthen`], [`shorten_lend`], [`change_bounds_from`],
+//! and [`change_bounds_into`] functions.
+//!
+//! These are useful for consumers of lifetime families.
+
+#![expect(unsafe_code, reason = "unsafely rely on the lifetime family traits")]
+
 use core::mem::{ManuallyDrop, transmute, transmute_copy};
 
 use crate::traits::{
@@ -89,7 +96,7 @@ where
     T: ?Sized
         + LifetimeFamily<'lower, Upper>
         + WithLifetime<'varying, 'other_lower, OtherUpper, Is: Sized>,
-    Varying<'varying, 'lower, Upper, T>: Sized
+    Varying<'varying, 'lower, Upper, T>: Sized,
 {
     let other = ManuallyDrop::new(other);
     // SAFETY: By the implementation safety conditions of `WithLifetime`, its `Is` associated
@@ -121,7 +128,7 @@ where
     T: ?Sized
         + LifetimeFamily<'lower, Upper>
         + WithLifetime<'varying, 'other_lower, OtherUpper, Is: Sized>,
-    Varying<'varying, 'lower, Upper, T>: Sized
+    Varying<'varying, 'lower, Upper, T>: Sized,
 {
     let this = ManuallyDrop::new(this);
     // SAFETY: By the implementation safety conditions of `WithLifetime`, its `Is` associated
