@@ -17,6 +17,8 @@
 //! </style>
 #![cfg_attr(doc, doc = include_str!("../README.md"))]
 
+#![expect(warnings, reason = "under development; TODO: remove")]
+
 #![no_std]
 
 #[cfg(feature = "alloc")]
