@@ -102,7 +102,7 @@ where
     // SAFETY: By the implementation safety conditions of `WithLifetime`, its `Is` associated
     // type does not use the upper or lower bound (even though it hypothetically *could* in an
     // unsound implementation, thus why the compiler does not recognize the types as the same).
-    // The upper and lower bounds are the only differences between this type. Therefore, this is
+    // The upper and lower bounds are the only differences between these types. Therefore, this is
     // a trivial transmute.
     // It does still copy out of `other` without moving out of `other`, so we need to avoid a
     // double-drop; we do so via `ManuallyDrop`.
@@ -134,7 +134,7 @@ where
     // SAFETY: By the implementation safety conditions of `WithLifetime`, its `Is` associated
     // type does not use the upper or lower bound (even though it hypothetically *could* in an
     // unsound implementation, thus why the compiler does not recognize the types as the same).
-    // The upper and lower bounds are the only differences between this type. Therefore, this is
+    // The upper and lower bounds are the only differences between these types. Therefore, this is
     // a trivial transmute.
     // It does still copy out of `other` without moving out of `other`, so we need to avoid a
     // double-drop; we do so via `ManuallyDrop`.

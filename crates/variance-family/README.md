@@ -52,10 +52,9 @@ implement `CovariantFamily`.
 
 ### Safe Usage
 
-You can use [`variance_family::shorten`], [`variance_family::lengthen`],
-[`variance_family::shorten_lend`], or the compiler's provided coercions to change the `'varying`
-lifetime. Additionally, [`variance_family::change_bounds_from`] and
-[`variance_family::change_bounds_into`] are provided to change the `'lower` and `Upper` bounds
+You can use [`shorten`], [`lengthen`], [`shorten_lend`], or the compiler's provided coercions to
+change the `'varying` lifetime. Additionally, [`change_bounds_from`] and
+[`change_bounds_into`] are provided to change the `'lower` and `Upper` bounds
 of `Varying<'varying, 'lower, Upper, T>`.
 
 ### Guarantees for `unsafe` Code
@@ -138,3 +137,8 @@ any additional terms or conditions.
 [`ContravariantFamily`]: https://docs.rs/variance-family/0/variance_family/trait.ContravariantFamily.html
 [`UnvaryingFamily`]: https://docs.rs/variance-family/0/variance_family/trait.UnvaryingFamily.html
 [`LendFamily`]: https://docs.rs/variance-family/0/variance_family/trait.LendFamily.html
+[`shorten`]: https://docs.rs/variance-family/0/variance_family/fn.shorten.html
+[`lengthen]: https://docs.rs/variance-family/0/variance_family/fn.lengthen.html
+[`shorten_lend`]: https://docs.rs/variance-family/0/variance_family/fn.shorten_lend.html
+[`change_bounds_from`]: https://docs.rs/variance-family/0/variance_family/fn.change_bounds_from.html
+[`change_bounds_into`]: https://docs.rs/variance-family/0/variance_family/fn.change_bounds_into.html

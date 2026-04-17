@@ -22,11 +22,15 @@ pub trait UpperBound: SealedUpperBound {}
 impl SealedUpperBound for &() {}
 impl UpperBound for &() {}
 
+/// The loosest possible [`UpperBound`].
 pub type MaxUpperBound = &'static ();
 
 /// Apply a `'varying` lifetime to a family of types, and provide implied bounds that
 /// bound `'varying` between `'lower` and the lifetime of an `Upper` bound (which is `&'upper ()`
 /// for some `'upper`).
+///
+/// Various macros are available to implement this trait in simple cases; attempt to use them
+/// before directly implementing this `unsafe` trait.
 ///
 /// ## Lifetimes
 ///
@@ -101,20 +105,34 @@ pub unsafe trait WithLifetime<
     'varying, 'lower, Upper: UpperBound,
     __ImplyBound = &'lower &'varying Upper,
 >: ChangeBounds<'varying, 'lower, Upper, Self::Is> {
+    /// The `'varying`-parameterized type, which must not use `'lower` or `Upper`.
     type Is: ?Sized;
 }
 
 /// Enforce that `'lower` and `Upper` are solely used to constrain the `'varying` lifetime and
 /// are not actually used in the `Is` associated type.
 ///
+/// Various macros are available to implement this trait in simple cases; attempt to use them
+/// before directly implementing this `unsafe` trait.
+///
 /// # Safety
-/// `RawMutVarying<'varying, Self>` must be the same type as `*mut *mut V`.
+/// `RawMutVarying<'varying, 'other_lower, OtherUpper, Self>` must be the same type as `*mut *mut V`.
 ///
 /// An implementation is certainly sound if [`ChangeBounds::prove_equal`] is implemented with the
 /// function body `{ varying }`. Otherwise, you will need to thoroughly confirm that
 /// your lifetime family's type genuinely only uses `'varying` and not `'lower` or `Upper`, and you
 /// can implement the method with `{ varying.cast() }`.
 pub unsafe trait ChangeBounds<'varying, 'lower, Upper, V: ?Sized> {
+    /// Method to help show that `Varying<'varying, 'lower, Upper, Self>` does not use
+    /// `'lower` or `Upper`.
+    ///
+    /// If this method can be implemented with the body `{ varying }`, then the compiler recognizes
+    /// this lifetime family does not use `'lower` or `Upper`, so the implementation of this trait
+    /// is sound.
+    ///
+    /// Otherwise, you **must** thoroughly ensure that values of type
+    /// `Varying<'varying, '_, _, Self>` only depend on `'varying` and `Self`, and this function
+    /// can be implemented with `{ long.cast() }`.
     fn prove_equal<'other_lower, OtherUpper>(
         varying: RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
     ) -> *mut *mut V
@@ -168,7 +186,7 @@ where
 /// actually use the `'varying` parameter.
 ///
 /// For any `'varying` lifetime between `'lower` and the lifetime of `Upper` (which is `&'upper ()`
-/// for some `'upper`), the type `Varying<'varying, Self>` is simply equal to
+/// for some `'upper`), the type `Varying<'varying, '_, _, Self>` is simply equal to
 /// `Self::WithAnyLifetime`.
 ///
 /// All possible implementations of this trait are provided indirectly, based on [`WithLifetime`].
@@ -188,6 +206,7 @@ pub trait UnvaryingFamily<'lower, Upper: UpperBound>:
     LifetimeFamily<'lower, Upper>
         + for<'varying> WithLifetime<'varying, 'lower, Upper, Is = Self::WithAnyLifetime>
 {
+    /// The supposedly `'varying`-parameterized type which does not actually use `'varying`.
     type WithAnyLifetime: ?Sized;
 }
 
@@ -210,7 +229,7 @@ where
 /// documentation throughout this crate, "covariance" may actually refer to
 /// "the ability to soundly be covariantly casted" instead of the variance assigned by the compiler.
 ///
-/// See the [`covariant`] and [`unvarying`] macros to implement this trait in simple cases.
+/// Various macros are available to implement this trait in simple cases.
 /// The below documentation contains details which you might not need to know.
 ///
 /// # Examples
@@ -271,9 +290,12 @@ where
 /// families, such as `(Cow<'a, str>, &'varying mut [u8], MyStruct)` becoming
 /// `(Cow<'a, str>, VaryingRefMut<[u8]>, Unvarying<MyStruct>)`.
 ///
-/// If that fails, try to use [`covariant`] (or [`unvarying`]). If your use case involves generics
-/// which are treated as variance families, that macro will not be sufficient, so you will need
-/// to unsafely implement this trait (and its two unsafe supertraits).
+/// If that fails, try to use [`covariant`], [`unvarying`], [`generic_wrapper`],
+/// [`varying_ref_wrapper`], or [`varying_ref_mut_wrapper`].
+///
+/// If your use case involves generics which are treated as variance families, the macros might
+/// not be sufficient, in which case you will need to unsafely implement this trait
+/// (and its two unsafe supertraits).
 ///
 /// # Implementation Safety
 /// `'varying` must be sound to cast covariantly in `T<'varying>` (where `T<'varying>` is
@@ -300,6 +322,9 @@ where
 /// [`transmute`]: core::mem::transmute
 /// [`covariant`]: crate::covariant
 /// [`unvarying`]: crate::unvarying
+/// [`generic_wrapper`]: crate::generic_wrapper
+/// [`varying_ref_wrapper`]: crate::varying_ref_wrapper
+/// [`varying_ref_mut_wrapper`]: crate::varying_ref_mut_wrapper
 /// [`variance_family::shorten`]: crate::shorten
 pub unsafe trait CovariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<'lower, Upper> {
     /// Method to help show that `Self<'varying>` is covariant over `'varying` in simpler cases.
@@ -308,7 +333,8 @@ pub unsafe trait CovariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<'low
     /// this lifetime family as covariant over `'varying`, so the implementation of this trait
     /// is sound.
     ///
-    /// Otherwise, you **must** thoroughly ensure that values of type `Varying<'varying, Self>`
+    /// Otherwise, you **must** thoroughly ensure that values of type
+    /// `Varying<'varying, '_, _, Self>`
     /// can soundly have covariant casts of `'varying` performed on them, and this function can
     /// be implemented with `{ long.cast() }`.
     fn prove_covariance<'long, 'short>(
@@ -328,7 +354,7 @@ pub unsafe trait CovariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<'low
 /// "contravariance" may actually refer to "the ability to soundly be contravariantly casted"
 /// instead of the variance assigned by the compiler.
 ///
-/// See the [`contravariant`] and [`unvarying`] macros to implement this trait in simple cases.
+/// Various macros are available to implement this trait in simple cases.
 /// The below documentation contains details which you might not need to know.
 ///
 /// ## Examples
@@ -380,9 +406,11 @@ pub unsafe trait CovariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<'low
 /// families, such as `(Cow<'a, str>, fn(&'varying mut [u8]) -> MyStruct)` becoming
 /// `(Cow<'a, str>, fn(VaryingRefMut<[u8]>) -> Unvarying<MyStruct>)`.
 ///
-/// If that fails, try to use [`contravariant`] (or [`unvarying`]). If your use case involves
-/// generics which are treated as variance families, that macro will not be sufficient, so you will
-/// need to unsafely implement this trait (and its two unsafe supertraits).
+/// If that fails, try to use [`contravariant`], [`unvarying`], or [`generic_wrapper`].
+///
+/// If your use case involves generics which are treated as variance families, the macros might
+/// not be sufficient, in which case you will need to unsafely implement this trait
+/// (and its two unsafe supertraits).
 ///
 /// # Implementation Safety
 /// `'varying` must be sound to cast contravariantly in `T<'varying>` (where `T<'varying>` is
@@ -410,6 +438,7 @@ pub unsafe trait CovariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<'low
 /// [`transmute`]: core::mem::transmute
 /// [`contravariant`]: crate::contravariant
 /// [`unvarying`]: crate::unvarying
+/// [`generic_wrapper`]: crate::generic_wrapper
 /// [`variance_family::lengthen`]: crate::lengthen
 pub unsafe trait ContravariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<'lower, Upper> {
     /// Method to help show that `Self<'varying>` is contravariant over `'varying` in simpler cases.
@@ -418,7 +447,8 @@ pub unsafe trait ContravariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<
     /// this lifetime family as contravariant over `'varying`, so the implementation of this trait
     /// is sound.
     ///
-    /// Otherwise, you **must** thoroughly ensure that values of type `Varying<'varying, Self>`
+    /// Otherwise, you **must** thoroughly ensure that values of type
+    /// `Varying<'varying, '_, _, Self>`
     /// can soundly have contravariant casts of `'varying` performed on them, and this function can
     /// be implemented with `{ short.cast() }`.
     fn prove_contravariance<'short, 'long>(

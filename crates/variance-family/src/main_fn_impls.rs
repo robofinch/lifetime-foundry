@@ -1,11 +1,6 @@
 //! Implementations for `fn(..Args) -> R` for arities 0-12.
 
-#![expect(unsafe_code, reason = "allow unsafe code to rely on impls of lifetime family traits")]
-
-use crate::traits::{
-    ChangeBounds, ContravariantFamily, CovariantFamily, UpperBound, RawMutVarying, RawVarying,
-    WithLifetime,
-};
+#![expect(unsafe_code, reason = "assert variance and permission to impl traits for `core` types")]
 
 
 // Note: in below safety comments, "is covariant over" or "is contravariant over" means, more
@@ -23,102 +18,31 @@ use crate::traits::{
 // - `fn(T1<'varying, .., Tn<'varying>) -> R<'varying>` is contravariant over `'varying` if each
 //   `Ti<'varying>` is covariant over `'varying` and `R<'varying>` is contravariant over `'varying`.
 
-// NOTE: for soundness, this macro should not be exported, even just within this crate.
-// It assumes that it is used with *this* crate's traits in scope (with the normal names).
-// In particular, the `unsafe impl` could be broken in other environments.
 macro_rules! fn_family {
     (fn($($Ti:ident),*) -> $R:ident) => {
-        // SAFETY:
-        // - We can assume (by the safety condition of `WithLifetime`)
-        //   that no `$Ti::Is` nor `$R` uses `'lower` or `Upper`,
-        //   so `fn($($Ti::Is),*) -> $R::Is` does not use `'lower` or `Upper`.
-        // - `variance-family` is allowed to implement traits for these types in `core`.
-        unsafe impl<'varying, 'lower, Upper, $($Ti,)* $R> WithLifetime<'varying, 'lower, Upper>
-        for fn($($Ti),*) -> $R
-        where
-            Upper: UpperBound,
-            $(
-                $Ti: ?Sized + WithLifetime<'varying, 'lower, Upper>,
-            )*
-            $R: ?Sized + WithLifetime<'varying, 'lower, Upper>,
-        {
-            type Is = fn($($Ti::Is),*) -> $R::Is;
-        }
+        const _: () = {
+            /// Get `fn($($Ti),*) -> $R` into the standard shape expected by `generic_wrapper`.
+            type Fn<$R, $($Ti,)*> = fn($($Ti,)*) -> $R;
 
-        // SAFETY:
-        // We can assume (by the safety condition of `WithLifetime`)
-        // that no `$Ti::Is` nor `$R` uses `'lower` or `Upper`,
-        // so `fn($($Ti::Is),*) -> $R::Is` does not use `'lower` or `Upper`.
-        unsafe impl<'varying, 'lower, Upper, $($Ti,)* $R>
-            ChangeBounds<'varying, 'lower, Upper, fn($($Ti::Is),*) -> $R::Is>
-        for fn($($Ti),*) -> $R
-        where
-            Upper: UpperBound,
-            $(
-                $Ti: ?Sized + WithLifetime<'varying, 'lower, Upper>,
-            )*
-            $R: ?Sized + WithLifetime<'varying, 'lower, Upper>,
-        {
-            fn prove_equal<'other_lower, OtherUpper>(
-                varying: RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
-            ) -> *mut *mut fn($($Ti::Is),*) -> $R::Is
-            where
-                Self: WithLifetime<'varying, 'other_lower, OtherUpper>,
-                OtherUpper: UpperBound,
-            {
-                varying.cast()
+            $crate::generic_wrapper! {
+                impl<{
+                    // SAFETY: `fn($($Ti),*) -> $R` is covariant over `$R`.
+                    #[unsafe(covariant)] $R,
+                    // SAFETY: `fn($($Ti),*) -> $R` is contravariant over each `$Ti`.
+                    $(
+                        #[unsafe(contravariant)] $Ti,
+                    )*
+                }> ([Co] + [Contra])variantFamily<'_, _>
+                // SAFETY: `variance-family` is allowed to implement traits for this type in `core`.
+                for #[unsafe(not_a_foreign_fundamental_type)] Fn<..>
+                where {
+                    $R: ?Sized,
+                    $(
+                        $Ti: ?Sized,
+                    )*
+                }
             }
-        }
-
-        // SAFETY:
-        // When each `Ti<'varying>` is contravariant over `'varying`
-        // and `R<'varying>` is covariant over `'varying`,
-        // `fn(.., Ti<'varying, ..) -> R<'varying>` is covariant over `'varying`.
-        unsafe impl<'lower, Upper, $($Ti,)* $R> CovariantFamily<'lower, Upper>
-        for fn($($Ti),*) -> $R
-        where
-            Upper: UpperBound,
-            $(
-                $Ti: ?Sized + ContravariantFamily<'lower, Upper>,
-            )*
-            $R: ?Sized + CovariantFamily<'lower, Upper>,
-        {
-            fn prove_covariance<'long, 'short>(
-                long: RawVarying<'long, 'lower, Upper, Self>,
-            ) -> RawVarying<'short, 'lower, Upper, Self>
-            where
-                Upper: 'long,
-                'long: 'short,
-                'short: 'lower,
-            {
-                long.cast()
-            }
-        }
-
-        // SAFETY:
-        // When each `Ti<'varying>` is covariant over `'varying`
-        // and `R<'varying>` is contravariant over `'varying`,
-        // `fn(.., Ti<'varying, ..) -> R<'varying>` is contravariant over `'varying`.
-        unsafe impl<'lower, Upper, $($Ti,)* $R> ContravariantFamily<'lower, Upper>
-        for fn($($Ti),*) -> $R
-        where
-            Upper: UpperBound,
-            $(
-                $Ti: ?Sized + CovariantFamily<'lower, Upper>,
-            )*
-            $R: ?Sized + ContravariantFamily<'lower, Upper>,
-        {
-            fn prove_contravariance<'short, 'long>(
-                short: RawVarying<'short, 'lower, Upper, Self>,
-            ) -> RawVarying<'long, 'lower, Upper, Self>
-            where
-                Upper: 'long,
-                'long: 'short,
-                'short: 'lower,
-            {
-                short.cast()
-            }
-        }
+        };
     };
 }
 

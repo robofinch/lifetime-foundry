@@ -1,14 +1,10 @@
 //! Implementations for `&'a T`, `&'varying T` (as [`VaryingRef<T>`]), and `*const T`.
 
-#![expect(unsafe_code, reason = "allow unsafe code to rely on impls of lifetime family traits")]
+#![expect(unsafe_code, reason = "assert variance and permission to impl traits for `core` types")]
 
 use core::marker::PhantomData;
 
-use crate::phantom_zst_methods;
-use crate::traits::{
-    ChangeBounds, ContravariantFamily, CovariantFamily, RawMutVarying, RawVarying, UpperBound,
-    WithLifetime,
-};
+use crate::{generic_wrapper, phantom_zst_methods, varying_ref_wrapper};
 
 
 // Note: in below safety comments, "is covariant over" or "is contravariant over" means, more
@@ -24,77 +20,18 @@ use crate::traits::{
 // - `&'a T<'varying>` is covariant over `'varying` if `T<'varying>` is covariant over `'varying`.
 // - `&'a T<'varying>` is contravariant over `'varying` if `T<'varying>` is contravariant over it.
 
-// SAFETY:
-// - We can assume (by the safety condition of `WithLifetime`)
-//   that `T::Is` does not use `'lower` or `Upper`,
-//   so `&'a T::Is` does not use `'lower` or `Upper`.
-// - `variance-family` is allowed to implement traits for this `#[fundamental]` type in `core`.
-unsafe impl<'a, 'varying, 'lower, Upper, T> WithLifetime<'varying, 'lower, Upper> for &'a T
-where
-    Upper: UpperBound,
-    T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
-    T::Is: 'a,
-{
-    type Is = &'a T::Is;
-}
+/// Get `&'a T` into the standard shape expected by `generic_wrapper`.
+type Ref<'a, T> = &'a T;
 
-// SAFETY:
-// We can assume (by the safety condition of `WithLifetime`)
-// that `T::Is` does not use `'lower` or `Upper`,
-// so `&'a T::Is` does not use `'lower` or `Upper`.
-unsafe impl<'a, 'varying, 'lower, Upper, T> ChangeBounds<'varying, 'lower, Upper, &'a T::Is>
-for &'a T
-where
-    Upper: UpperBound,
-    T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
-{
-    fn prove_equal<'other_lower, OtherUpper>(
-        varying: RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
-    ) -> *mut *mut &'a T::Is
-    where
-        Self: WithLifetime<'varying, 'other_lower, OtherUpper>,
-        OtherUpper: UpperBound,
-    {
-       varying.cast()
-    }
-}
-
-// SAFETY:
-// When `T<'varying>` is covariant over `'varying`, so is `&'a T<'varying>`.
-unsafe impl<'a, 'lower, Upper, T> CovariantFamily<'lower, Upper> for &'a T
-where
-    Upper: UpperBound,
-    T: ?Sized + CovariantFamily<'lower, Upper, Is: 'a>,
-{
-    fn prove_covariance<'long, 'short>(
-        long: RawVarying<'long, 'lower, Upper, Self>,
-    ) -> RawVarying<'short, 'lower, Upper, Self>
-    where
-        Upper: 'long,
-        'long: 'short,
-        'short: 'lower,
-    {
-        long.cast()
-    }
-}
-
-// SAFETY:
-// When `T<'varying>` is contravariant over `'varying`, so is `&'a T<'varying>`.
-unsafe impl<'a, 'lower, Upper, T> ContravariantFamily<'lower, Upper> for &'a T
-where
-    Upper: UpperBound,
-    T: ?Sized + ContravariantFamily<'lower, Upper, Is: 'a>,
-{
-    fn prove_contravariance<'short, 'long>(
-        short: RawVarying<'short, 'lower, Upper, Self>,
-    ) -> RawVarying<'long, 'lower, Upper, Self>
-    where
-        Upper: 'long,
-        'long: 'short,
-        'short: 'lower,
-    {
-        short.cast()
-    }
+generic_wrapper! {
+    impl<{
+        'a,
+        // SAFETY: `&'a T` is covariant over `T``.
+        #[unsafe(covariant)] T (Is: 'a),
+    }> ([Co] + [Contra])variantFamily<'_, _>
+    // SAFETY: `variance-family` is allowed to implement traits for this type in `core`.
+    for #[unsafe(not_a_foreign_fundamental_type)] Ref<..>
+    where {T: ?Sized}
 }
 
 
@@ -122,66 +59,20 @@ where
 ///
 /// As a result, if you want a more complicated lifetime family
 /// (such as `&'varying Cow<'varying, [u8]>`),
-/// you will have to define your own lifetime family type instead of composing `VaryingRef<_>` with
+/// you may have to define your own lifetime family type instead of composing `VaryingRef<_>` with
 /// other lifetime family types.
 pub struct VaryingRef<T: ?Sized>(PhantomData<fn() -> T>);
 
 phantom_zst_methods!(impl<{T: ?Sized}> _ for VaryingRef<{T}>);
 
-// SAFETY:
-// - We can assume (by the safety condition of `WithLifetime`)
-//   that `T::Is` does not use `'lower` or `&'upper ()`,
-//   so `&'varying T::Is` does not use `'lower` or `&'upper ()`.
-// - This is a local type.
-unsafe impl<'varying, 'lower, 'upper, T> WithLifetime<'varying, 'lower, &'upper ()>
-for VaryingRef<T>
-where
-    T: ?Sized + WithLifetime<'varying, 'lower, &'upper (), Is: 'upper>,
-{
-    type Is = &'varying T::Is;
+varying_ref_wrapper! {
+    impl<T> CovariantFamily<'_, _>
+    // SAFETY: `VaryingRef` is defined in this crate.
+    for #[unsafe(not_a_foreign_fundamental_type)] VaryingRef<T>
+    // SAFETY: `&'varying T` is covariant over both `'varying` and `T`.
+    as Ref<#[unsafe(covariant)] '_, #[unsafe(covariant)] T>
+    where {T: ?Sized}
 }
-
-// SAFETY:
-// We can assume (by the safety condition of `WithLifetime`)
-// that `T::Is` does not use `'lower` or `Upper`,
-// so `&'a T::Is` does not use `'lower` or `Upper`.
-unsafe impl<'varying, 'lower, Upper, T> ChangeBounds<'varying, 'lower, Upper, &'varying T::Is>
-for VaryingRef<T>
-where
-    Upper: UpperBound,
-    T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
-{
-    fn prove_equal<'other_lower, OtherUpper>(
-        varying: RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
-    ) -> *mut *mut &'varying T::Is
-    where
-        Self: WithLifetime<'varying, 'other_lower, OtherUpper>,
-        OtherUpper: UpperBound,
-    {
-       varying.cast()
-    }
-}
-
-// SAFETY:
-// When `T<'varying>` is covariant over `'varying`, so is `&'varying T<'varying>`.
-unsafe impl<'lower, 'upper, T> CovariantFamily<'lower, &'upper ()> for VaryingRef<T>
-where
-    T: ?Sized + CovariantFamily<'lower, &'upper (), Is: 'upper>,
-{
-    fn prove_covariance<'long, 'short>(
-        long: RawVarying<'long, 'lower, &'upper (), Self>,
-    ) -> RawVarying<'short, 'lower, &'upper (), Self>
-    where
-        &'upper (): 'long,
-        'long: 'short,
-        'short: 'lower,
-    {
-        long.cast()
-    }
-}
-
-// `&'varying T<'varying>` is never contravariant over `'varying`. It's always at best covariant,
-// never bivariant.
 
 
 // ================================================================
@@ -192,74 +83,13 @@ where
 // - `*const T<'varying>` is covariant over `'varying` if `T<'varying>` is covariant over it.
 // - `*const T<'varying>` is contravariant over it if `T<'varying>` is contravariant over it.
 
-// SAFETY:
-// - We can assume (by the safety condition of `WithLifetime`)
-//   that `T::Is` does not use `'lower` or `Upper`,
-//   so `*const T::Is` does not use `'lower` or `Upper`.
-// - `variance-family` is allowed to implement traits for this type in `core`.
-unsafe impl<'varying, 'lower, Upper, T> WithLifetime<'varying, 'lower, Upper> for *const T
-where
-    Upper: UpperBound,
-    T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
-{
-    type Is = *const T::Is;
-}
+/// Get `*const T` into the standard shape expected by `generic_wrapper`.
+type Const<T> = *const T;
 
-// SAFETY:
-// We can assume (by the safety condition of `WithLifetime`)
-// that `T::Is` does not use `'lower` or `Upper`,
-// so `*const T::Is` does not use `'lower` or `Upper`.
-unsafe impl<'varying, 'lower, Upper, T> ChangeBounds<'varying, 'lower, Upper, *const T::Is>
-for *const T
-where
-    Upper: UpperBound,
-    T: ?Sized + WithLifetime<'varying, 'lower, Upper>,
-{
-    fn prove_equal<'other_lower, OtherUpper>(
-        varying: RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
-    ) -> *mut *mut *const T::Is
-    where
-        Self: WithLifetime<'varying, 'other_lower, OtherUpper>,
-        OtherUpper: UpperBound,
-    {
-       varying.cast()
-    }
-}
-
-// SAFETY:
-// When `T<'varying>` is covariant over `'varying`, so is `*const T<'varying>`.
-unsafe impl<'lower, Upper, T> CovariantFamily<'lower, Upper> for *const T
-where
-    Upper: UpperBound,
-    T: ?Sized + CovariantFamily<'lower, Upper>,
-{
-    fn prove_covariance<'long, 'short>(
-        long: RawVarying<'long, 'lower, Upper, Self>,
-    ) -> RawVarying<'short, 'lower, Upper, Self>
-    where
-        Upper: 'long,
-        'long: 'short,
-        'short: 'lower,
-    {
-        long.cast()
-    }
-}
-
-// SAFETY:
-// When `T<'varying>` is contravariant over `'varying`, so is `*const T<'varying>`.
-unsafe impl<'lower, Upper, T> ContravariantFamily<'lower, Upper> for *const T
-where
-    Upper: UpperBound,
-    T: ?Sized + ContravariantFamily<'lower, Upper>,
-{
-    fn prove_contravariance<'short, 'long>(
-        short: RawVarying<'short, 'lower, Upper, Self>,
-    ) -> RawVarying<'long, 'lower, Upper, Self>
-    where
-        Upper: 'long,
-        'long: 'short,
-        'short: 'lower,
-    {
-        short.cast()
-    }
+generic_wrapper! {
+    // SAFETY: `*const T` is covariant over `T``.
+    impl<{#[unsafe(covariant)] T}> ([Co] + [Contra])variantFamily<'_, _>
+    // SAFETY: `variance-family` is allowed to implement traits for this type in `core`.
+    for #[unsafe(not_a_foreign_fundamental_type)] Const<..>
+    where {T: ?Sized}
 }

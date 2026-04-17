@@ -38,20 +38,33 @@ mod main_mut_impls;
 mod main_fn_impls;
 
 mod core_impls;
+
 #[cfg(feature = "alloc")]
 mod alloc_impls;
+
 #[cfg(feature = "std")]
 mod std_impls;
 
+#[cfg(feature = "more-impls")]
+mod more_core_impls;
+
+#[cfg(feature = "more-impls")]
+#[cfg(feature = "alloc")]
+mod more_alloc_impls;
+
+#[cfg(feature = "more-impls")]
+#[cfg(feature = "std")]
+mod more_std_impls;
+
 
 pub use self::{
-    macros::assert_not_a_foreign_fundamental_type,
     main_const_impls::VaryingRef,
     main_mut_impls::VaryingRefMut,
     unvarying_family::Unvarying,
 };
 pub use self::{
     helper_functions::{change_bounds_from, change_bounds_into, lengthen, shorten, shorten_lend},
+    macros::{assert_not_a_foreign_fundamental_type, assert_variance},
     traits::{
         ChangeBounds, ContravariantFamily, CovariantFamily, Lend, LendFamily, LifetimeFamily,
         MaxUpperBound, RawMutVarying, RawVarying, UnvaryingFamily, UpperBound, Varying,
@@ -66,7 +79,9 @@ pub mod borrow {}
 ///
 /// The word `Cell` is added to avoid a conflict with the names of the `&'varying T` and
 /// `&'varying mut T` families.
-pub mod cell {}
+pub mod cell {
+    pub use crate::core_impls::{VaryingCellRef, VaryingCellRefMut};
+}
 /// Module for the `slice::Iter<'varying, T>` family, called `VaryingSliceIter<T>`.
 pub mod slice {}
 /// Module for the `MutexGuard<'varying, T>`, `RwLockReadGuard<'varying, T>`, and
