@@ -8,6 +8,12 @@
 //! [`ContravariantFamily`]: ContravariantFamily
 //! [`UnvaryingFamily`]: UnvaryingFamily
 //! [`LendFamily`]: LendFamily
+//! [`shorten`]: shorten
+//! [`lengthen]: lengthen
+//! [`shorten_lend`]: shorten_lend
+//! [`change_bounds_from`]: change_bounds_from
+//! [`change_bounds_into`]: change_bounds_into
+//! [`MaxUpperBound`]: MaxUpperBound
 //!
 //! <style>
 //! .rustdoc-hidden { display: none; }

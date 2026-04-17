@@ -92,12 +92,17 @@ for<'varying where Upper: 'varying, 'varying: 'lower> Varying<'varying, 'lower, 
 ```
 
 Note that a consumer of a lifetime family may sometimes wish to require that the family has *no*
-upper bound or lower bound. Any `'static` type acts as a maximally loose upper bound, but there is
-no special lifetime shorter than all other lifetimes; instead,
+upper bound or lower bound. The [`MaxUpperBound`] type acts as a maximally loose upper bound, but
+there is no special lifetime shorter than all other lifetimes; instead,
 `for<'lower> CovariantFamily<'lower, Upper>` effectively removes the lower bound. (This, too,
 automagically acts like it had a `for<'lower where Upper: 'lower>` binder.)
 
 ## Caution for Implied Bounds
+
+Most of the complexity of this crate consists of reasoning about variance in ways which are
+certainly sound. However, its usage of implied bounds do edge closer to compiler bugs and similar
+edge cases. For the below reasons, I consider this crate to be fairly low-risk
+(with respect to compiler bugs).
 
 Currently, in some situations involving higher-ranked function pointers, the compiler can neglect
 to enforce implied bounds, resulting in soundness. This known bug is tracked at
@@ -105,8 +110,20 @@ to enforce implied bounds, resulting in soundness. This known bug is tracked at
 traits can also be created, as mentioned in <https://github.com/rust-lang/rust/issues/84533>.
 This crate does not implement any of its traits for higher-ranked types, and none of its
 traits are `dyn`-compatible; therefore, this crate itself should not come close to triggering
-the unsoundness. Nevertheless, for the sake of caution, it is worth keeping this potential risk in
-mind when working with higher-ranked types alongside this crate.
+the unsoundness from those bugs. Nevertheless, for the sake of caution, it is worth keeping this
+potential risk in mind when working with higher-ranked types alongside this crate.
+
+Additionally, while `WithLifetime` uses an "interesting" supertrait bound, it does not fit the form
+of the example in <https://github.com/rust-lang/rust/issues/136547> which creates an unconstrained
+lifetime. (Either way, it does not appear that this issue can, alone, result in unsoundness.)
+
+`change_bounds_from` and `change_bounds_into` have complicated bounds in order to evade
+<https://github.com/rust-lang/rust/issues/21974>, but the bounds are not pathological.
+
+Many lifetime-related soundness bugs appear to result from unsound function types. (Currently,
+the builtin impls of some closures and functions are not well-formed, resulting in unsoundness.)
+This crate does not contain any usage of the `Fn`, `FnMut`, or `FnOnce` traits and does not even
+use any closures.
 
 # Custom implementations
 
@@ -116,6 +133,10 @@ exhaustively implementing traits for types in `std` is not a goal of this crate.
 when the lifetime families provided here are not sufficient, you can create a custom lifetime
 family over whatever types you wish (including types not defined in the same crate as the custom
 lifetime family).
+
+Various `macro_rules!` macros are provided by this crate to simplify implementation.
+`variance-family` internally uses those macros for *all* of its `unsafe impl`s, implying that th
+ macros should be sufficient for most implementations.
 
 # License
 
@@ -142,3 +163,4 @@ any additional terms or conditions.
 [`shorten_lend`]: https://docs.rs/variance-family/0/variance_family/fn.shorten_lend.html
 [`change_bounds_from`]: https://docs.rs/variance-family/0/variance_family/fn.change_bounds_from.html
 [`change_bounds_into`]: https://docs.rs/variance-family/0/variance_family/fn.change_bounds_into.html
+[`MaxUpperBound`]: https://docs.rs/variance-family/0/variance_family/type.MaxUpperBound.html
