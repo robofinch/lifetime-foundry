@@ -272,7 +272,7 @@ macro_rules! unvarying {
 /// dependencies, that is trivially true.)
 ///
 /// Since it's not marked `#[macro_export]`, it's sound.
-macro_rules! atomic_types {
+macro_rules! concrete_types {
     ($($atomic_type:ty),+ $(,)?) => {
         #[expect(
             unsafe_code,
@@ -291,7 +291,7 @@ macro_rules! atomic_types {
     };
 }
 
-pub(crate) use atomic_types;
+pub(crate) use concrete_types;
 
 /// Implement variance family traits for a type which contains other lifetime families but does
 /// not directly use `'varying`.

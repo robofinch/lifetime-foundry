@@ -1,5 +1,6 @@
 //! With the `more-impls` feature, also:
 //!
+//! - `cell::{OnceCell, LazyCell}`,
 //! - `cmp::Ordering`,
 //! - `convert::Infallible`,
 //! - `mem::{ManuallyDrop, MaybeUninit}`,
@@ -14,8 +15,8 @@
 use core::marker::PhantomData;
 
 use crate::{
-    generic_wrapper, macros::atomic_types, phantom_zst_methods, unvarying, varying_ref_mut_wrapper,
-    varying_ref_wrapper,
+    generic_wrapper, macros::concrete_types, phantom_zst_methods, unvarying,
+    varying_ref_mut_wrapper, varying_ref_wrapper,
 };
 
 
@@ -24,7 +25,7 @@ use crate::{
 //  `num::NonZero*`, `sync::atomic::*`
 // ================================================================
 
-atomic_types!(
+concrete_types!(
     core::cmp::Ordering,
     core::convert::Infallible,
     core::num::NonZeroI8, core::num::NonZeroI16, core::num::NonZeroI32, core::num::NonZeroI64,
@@ -35,20 +36,20 @@ atomic_types!(
 );
 
 #[cfg(target_has_atomic = "8")]
-atomic_types!(
+concrete_types!(
     core::sync::atomic::AtomicBool,
     core::sync::atomic::AtomicI8,
     core::sync::atomic::AtomicU8,
 );
 
 #[cfg(target_has_atomic = "16")]
-atomic_types!(core::sync::atomic::AtomicI16, core::sync::atomic::AtomicU16);
+concrete_types!(core::sync::atomic::AtomicI16, core::sync::atomic::AtomicU16);
 
 #[cfg(target_has_atomic = "32")]
-atomic_types!(core::sync::atomic::AtomicI32, core::sync::atomic::AtomicU32);
+concrete_types!(core::sync::atomic::AtomicI32, core::sync::atomic::AtomicU32);
 
 #[cfg(target_has_atomic = "64")]
-atomic_types!(core::sync::atomic::AtomicI64, core::sync::atomic::AtomicU64);
+concrete_types!(core::sync::atomic::AtomicI64, core::sync::atomic::AtomicU64);
 
 #[cfg(target_has_atomic = "ptr")]
 unvarying! {
@@ -60,8 +61,24 @@ unvarying! {
 
 
 // ================================================================
+//  `cell::{OnceCell, LazyCell}`,
 //  `mem::{ManuallyDrop, MaybeUninit}`, `ptr::NonNull`
 // ================================================================
+
+generic_wrapper! {
+    impl<{#[unvarying] T (Is: Sized)}> ([Co] + [Contra])variantFamily<'_, _>
+    // SAFETY: `variance-family` is allowed to implement traits for this type in `core`.
+    for #[unsafe(not_a_foreign_fundamental_type)] core::cell::OnceCell<..>
+}
+
+generic_wrapper! {
+    impl<{
+        #[unvarying] T (Is: Sized),
+        #[unvarying] F (Is: Sized),
+    }> ([Co] + [Contra])variantFamily<'_, _>
+    // SAFETY: `variance-family` is allowed to implement traits for this type in `core`.
+    for #[unsafe(not_a_foreign_fundamental_type)] core::cell::LazyCell<..>
+}
 
 generic_wrapper! {
     impl<{
