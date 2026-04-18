@@ -3,20 +3,9 @@
 #![expect(unsafe_code, reason = "assert variance and permission to impl traits for `core` types")]
 
 
-// Note: in below safety comments, "is covariant over" or "is contravariant over" means, more
-// precisely, "is sound to covariantly (or contravariantly) cast with respect to". That is,
-// manually-proven variance (and manually-proven soundness of casts) is the relevant concern,
-// not compiler-assigned variance (and compiler-proven soundness of casts).
-
 // ================================================================
 //  fn(T1, .., Tn) -> R    (for argument arities 0..=12)
 // ================================================================
-
-// Safety summary:
-// - `fn(T1<'varying, .., Tn<'varying>) -> R<'varying>` is covariant over `'varying` if each
-//   `Ti<'varying>` is contravariant over `'varying` and `R<'varying>` is covariant over `'varying`.
-// - `fn(T1<'varying, .., Tn<'varying>) -> R<'varying>` is contravariant over `'varying` if each
-//   `Ti<'varying>` is covariant over `'varying` and `R<'varying>` is contravariant over `'varying`.
 
 macro_rules! fn_family {
     (fn($($Ti:ident),*) -> $R:ident) => {

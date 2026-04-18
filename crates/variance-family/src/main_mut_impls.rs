@@ -7,19 +7,9 @@ use core::marker::PhantomData;
 use crate::{generic_wrapper, phantom_zst_methods, varying_ref_mut_wrapper};
 
 
-// Note: in below safety comments, "is covariant over" or "is contravariant over" means, more
-// precisely, "is sound to covariantly (or contravariantly) cast with respect to". That is,
-// manually-proven variance (and manually-proven soundness of casts) is the relevant concern,
-// not compiler-assigned variance (and compiler-proven soundness of casts).
-
 // ================================================================
 //  &'a mut T
 // ================================================================
-
-// Safety summary:
-// - `&'a mut U` is bivariant over `'varying` (as it's entirely unused). Below, `T<'varying>`
-//   families are used which implement `UnvaryingFamily`, making them equivalent to `&'a mut U`
-//   for some type `U`. Unsafe transmutes aren't even needed.
 
 /// Get `&'a mut T` into the standard shape expected by `generic_wrapper`.
 type RefMut<'a, T> = &'a mut T;
@@ -35,12 +25,6 @@ generic_wrapper! {
 // ================================================================
 //  &'varying mut T    (VaryingRefMut<T>)
 // ================================================================
-
-// Safety summary:
-// - `&'varying mut U` is covariant over `'varying`. Below, `T<'varying>` families are used which
-//   implement `UnvaryingFamily`, making them equivalent to `&'a mut U` for some type `U`.
-//   Unsafe transmutes aren't even needed.
-// - `&'varying mut T<'varying>` is never contravariant over `'varying`.
 
 /// The `&'varying mut T<'varying>` lifetime family.
 ///
@@ -76,11 +60,6 @@ varying_ref_mut_wrapper! {
 // ================================================================
 //  *mut T
 // ================================================================
-
-// Safety summary:
-// - `*mut U` is bivariant over `'varying` (as it's entirely unused). Below, `T<'varying>`
-//   families are used which implement `UnvaryingFamily`, making them equivalent to `*mut U`
-//   for some type `U`.
 
 /// Get `*mut T` into the standard shape expected by `generic_wrapper`.
 type Mut<T> = *mut T;

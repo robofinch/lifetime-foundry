@@ -7,18 +7,9 @@ use core::marker::PhantomData;
 use crate::{generic_wrapper, phantom_zst_methods, varying_ref_wrapper};
 
 
-// Note: in below safety comments, "is covariant over" or "is contravariant over" means, more
-// precisely, "is sound to covariantly (or contravariantly) cast with respect to". That is,
-// manually-proven variance (and manually-proven soundness of casts) is the relevant concern,
-// not compiler-assigned variance (and compiler-proven soundness of casts).
-
 // ================================================================
 //  &'a T
 // ================================================================
-
-// Safety summary:
-// - `&'a T<'varying>` is covariant over `'varying` if `T<'varying>` is covariant over `'varying`.
-// - `&'a T<'varying>` is contravariant over `'varying` if `T<'varying>` is contravariant over it.
 
 /// Get `&'a T` into the standard shape expected by `generic_wrapper`.
 type Ref<'a, T> = &'a T;
@@ -38,10 +29,6 @@ generic_wrapper! {
 // ================================================================
 //  &'varying T    (VaryingRef<T>)
 // ================================================================
-
-// Safety summary:
-// - `&'varying T<'varying>` is covariant over `'varying` if `T<'varying>` is covariant over it.
-// - `&'varying T<'varying>` is never contravariant over `'varying`.
 
 /// The `&'varying T<'varying>` lifetime family.
 ///
@@ -78,10 +65,6 @@ varying_ref_wrapper! {
 // ================================================================
 //  *const T
 // ================================================================
-
-// Safety summary:
-// - `*const T<'varying>` is covariant over `'varying` if `T<'varying>` is covariant over it.
-// - `*const T<'varying>` is contravariant over it if `T<'varying>` is contravariant over it.
 
 /// Get `*const T` into the standard shape expected by `generic_wrapper`.
 type Const<T> = *const T;

@@ -388,6 +388,12 @@ pub(crate) use atomic_types;
 /// of the `unsafe(contravariant)` types implement `CovariantFamily`, the varying type will implement
 /// `ContravariantFamily`.
 ///
+/// ### Terminology
+/// The requirements of being "covariant over X" or "contravariant over X" are more precisely
+/// expressed as "casts which covariantly (or contravariantly) change X must be sound". That is,
+/// manually-proven variance (and manually-proven soundness of casts) is the relevant concern,
+/// not compiler-assigned variance (and compiler-proven soundness of casts).
+///
 /// ## `unsafe(not_a_foreign_fundamental_type)`
 /// One safety condition for implementing [`WithLifetime`] requires that it *not* be implemented
 /// for family types not defined in your crate (with the exception of `variance-family`
@@ -510,6 +516,12 @@ macro_rules! generic_wrapper {
 ///
 /// When the `unsafe(covariant)` type implements `CovariantFamily`, the varying type will implement
 /// `CovariantFamily`.
+///
+/// ### Terminology
+/// The requirement of being "covariant over X" is more precisely  expressed as
+/// "casts which covariantly change X must be sound". That is, manually-proven variance
+/// (and manually-proven soundness of casts) is the relevant concern,
+/// not compiler-assigned variance (and compiler-proven soundness of casts).
 ///
 /// ## `unsafe(not_a_foreign_fundamental_type)`
 /// See [`generic_wrapper`]; a `#[unsafe(not_a_foreign_fundamental_type)]` marker is required.
