@@ -88,8 +88,12 @@ pub mod borrow {}
 pub mod cell {
     pub use crate::core_impls::{VaryingCellRef, VaryingCellRefMut};
 }
-/// Module for the `slice::Iter<'varying, T>` family, called `VaryingSliceIter<T>`.
-pub mod slice {}
+/// Module for the `slice::Iter<'varying, T>` and `slice::IterMut<'varying, T>` families,
+/// called `VaryingSlice{Iter, IterMut}<T>`.
+pub mod slice {
+    #[cfg(feature = "more-impls")]
+    pub use crate::more_core_impls::{VaryingSliceIter, VaryingSliceIterMut};
+}
 /// Module for the `MutexGuard<'varying, T>`, `RwLockReadGuard<'varying, T>`, and
 /// `RwLockWriteGuard<'varying, T>` families, called `Varying*Guard<T>`.
 pub mod sync {}

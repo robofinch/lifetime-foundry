@@ -179,17 +179,17 @@ generic_wrapper! {
 
 
 // ================================================================
-//  `cell::Ref<'varying, T>`    (VaryingCellRef<T>)
+//  `cell::Ref<'varying, T<'varying>>` (VaryingCellRef<T>)
 // ================================================================
 
 // Safety summary:
 // - `cell::Ref<'varying, T>` is covariant over `'varying` if `T<'varying>` is covariant over it.
 // - `cell::Ref<'varying, T>` is never contravariant over `'varying`.
 
-/// The `cell::Ref<'varying, T>` lifetime family.
+/// The `cell::Ref<'varying, T<'varying>>` lifetime family.
 ///
-/// If `T<'varying>` is covariant over `'varying`, then `cell::Ref<'varying, T>` is covariant
-/// over `'varying`.
+/// If `T<'varying>` is covariant over `'varying`, then `cell::Ref<'varying, T<'varying>>` is
+/// covariant over `'varying`.
 ///
 /// This lifetime family is never contravariant over `'varying`.
 ///
@@ -234,7 +234,7 @@ generic_wrapper! {
 
 
 // ================================================================
-//  `cell::RefMut<'varying, T>`    (VaryingCellRefMut<T>)
+//  `cell::RefMut<'varying, T<'varying>>` (VaryingCellRefMut<T>)
 // ================================================================
 
 // Safety summary:
@@ -243,10 +243,11 @@ generic_wrapper! {
 //   type `U`. Unsafe transmutes aren't even needed.
 // - `cell::RefMut<'varying, T>` is never contravariant over `'varying`.
 
-/// The `cell::RefMut<'varying, T>` lifetime family.
+/// The `cell::RefMut<'varying, T<'varying>>` lifetime family.
 ///
 /// If `T<'varying>` does not actually use `'varying` at all (making it some fixed type `U`
-/// regardless of `'varying`), then `cell::RefMut<'varying, T>` is covariant over `'varying`.
+/// regardless of `'varying`), then `cell::RefMut<'varying, T<'varying>>` is covariant over
+/// `'varying`.
 ///
 /// This lifetime family is never contravariant over `'varying`.
 ///

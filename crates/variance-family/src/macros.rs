@@ -274,14 +274,20 @@ macro_rules! unvarying {
 /// Since it's not marked `#[macro_export]`, it's sound.
 macro_rules! atomic_types {
     ($($atomic_type:ty),+ $(,)?) => {
-        $(
-            $crate::unvarying! {
-                impl (Co+Contra)variantFamily<'_, _>
-                // SAFETY: `variance-family` is allowed to implement traits for this atomic type
-                // in `core`, `alloc`, `std`, or `variance-family`.
-                for #[unsafe(not_a_foreign_fundamental_type)] $atomic_type
-            }
-        )+
+        #[expect(
+            unsafe_code,
+            reason = "safely encapsulated, thanks to being crate-private",
+        )]
+        const _: () = {
+            $(
+                $crate::unvarying! {
+                    impl (Co+Contra)variantFamily<'_, _>
+                    // SAFETY: `variance-family` is allowed to implement traits for this atomic type
+                    // in `core`, `alloc`, `std`, or `variance-family`.
+                    for #[unsafe(not_a_foreign_fundamental_type)] $atomic_type
+                }
+            )+
+        };
     };
 }
 
@@ -1414,7 +1420,7 @@ macro_rules! __impl_varying_ref_wrapper {
         unsafe impl<'lower, 'upper, $t> $crate::CovariantFamily<'lower, &'upper ()>
         for $($name)::+<$fam_t>
         where
-            $t: $crate::CovariantFamily<'lower, &'upper (), Is: 'upper + $($($bound:tt)*)?>,
+            $t: $crate::CovariantFamily<'lower, &'upper (), Is: 'upper + $($($bound)*)?>,
             $($where_bounds)*
         {
             fn prove_covariance<'long, 'short>(
@@ -1458,7 +1464,7 @@ macro_rules! __impl_varying_ref_mut_wrapper {
         unsafe impl<'lower, 'upper, $t> $crate::CovariantFamily<'lower, &'upper ()>
         for $($name)::+<$fam_t>
         where
-            $t: $crate::UnvaryingFamily<'lower, &'upper (), Is: 'upper + $($($bound:tt)*)?>,
+            $t: $crate::UnvaryingFamily<'lower, &'upper (), Is: 'upper + $($($bound)*)?>,
             $($where_bounds)*
         {
             fn prove_covariance<'long, 'short>(
@@ -1500,7 +1506,7 @@ macro_rules! __impl_varying_with_lifetime {
             $crate::WithLifetime<'varying, 'lower, &'upper ()>
         for $($name)::+<$fam_t>
         where
-            $t: $crate::WithLifetime<'varying, 'lower, &'upper (), Is: 'upper + $($($bound:tt)*)?>,
+            $t: $crate::WithLifetime<'varying, 'lower, &'upper (), Is: 'upper + $($($bound)*)?>,
             $($where_bounds)*
         {
             type Is = $($varying_name)::+<'varying, $varying_t::Is>;
@@ -1515,7 +1521,7 @@ macro_rules! __impl_varying_with_lifetime {
         for $($name)::+<$fam_t>
         where
             Upper: $crate::UpperBound,
-            $t: $crate::WithLifetime<'varying, 'lower, Upper $(, Is: $($bound:tt)*)?>,
+            $t: $crate::WithLifetime<'varying, 'lower, Upper $(, Is: $($bound)*)?>,
             $($where_bounds)*
         {
             fn prove_equal<'other_lower, OtherUpper>(
