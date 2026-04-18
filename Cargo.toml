@@ -9,7 +9,7 @@ members = [
 [workspace.package]
 edition      = "2024"
 rust-version = "1.85"
-repository   = "https://github.com/robofinch/attached-ref"
+repository   = "https://github.com/robofinch/lifetime-foundry"
 license      = "MIT OR Apache-2.0"
 
 [workspace.dependencies]

@@ -2,7 +2,7 @@
 <h1> Variance Family </h1>
 </div>
 
-[<img alt="github" src="https://img.shields.io/badge/github-variance--family-08f?logo=github" height="20">](https://github.com/robofinch/attached-ref/)
+[<img alt="github" src="https://img.shields.io/badge/github-variance--family-08f?logo=github" height="20">](https://github.com/robofinch/lifetime-foundry/tree/main/crates/variance-family)
 [![Latest version](https://img.shields.io/crates/v/variance-family.svg)](https://crates.io/crates/variance-family)
 [![Documentation](https://img.shields.io/docsrs/variance-family)](https://docs.rs/variance-family/0)
 [![Apache 2.0 or MIT license.](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](#license)

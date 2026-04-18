@@ -1,8 +1,8 @@
 // See https://linebender.org/blog/doc-include for this README inclusion strategy
 // File links are not supported by rustdoc
 //!
-//! [LICENSE-APACHE]: https://github.com/robofinch/attached-ref/blob/main/LICENSE-APACHE
-//! [LICENSE-MIT]: https://github.com/robofinch/attached-ref/blob/main/LICENSE-MIT
+//! [LICENSE-APACHE]: https://github.com/robofinch/lifetime-foundry/blob/main/LICENSE-APACHE
+//! [LICENSE-MIT]: https://github.com/robofinch/lifetime-foundry/blob/main/LICENSE-MIT
 //!
 //!
 //! <style>

@@ -1,22 +1,24 @@
 #![expect(unsafe_code, reason = "Allow `unsafe` code to rely on implementations being correct")]
 
-use variance_family::{LendFamily, MaxUpperBound, UpperBound, Varying};
+use variance_family::{Lend, LendFamily, MaxUpperBound, UpperBound};
 
 
 /// Shorthand for applying a `'a` lifetime parameter to the `T::View` lifetime family.
 ///
 /// This requires that `T: 'a` (and `T: AliasableView`).
 pub type View<'a, T, Upper = MaxUpperBound>
-    = Varying<'a, 'a, Upper, <T as AliasableView<Upper>>::View>;
+    = Lend<'a, Upper, <T as AliasableView<Upper>>::View>;
 
 /// Shorthand for applying a `'a` lifetime parameter to the `T::ViewMut` lifetime family.
 ///
 /// This requires that `T: 'a` (and `T: AliasableViewMut`).
 pub type ViewMut<'a, T, Upper = MaxUpperBound>
-    = Varying<'a, 'a, Upper, <T as AliasableViewMut<Upper>>::ViewMut>;
+    = Lend<'a, Upper, <T as AliasableViewMut<Upper>>::ViewMut>;
 
-/// A trait for types with temporary views that can be soundly lifetime-extended (or, in the case
-/// of raw pointers, continue to be soundly accessed) under specific conditions.
+/// A trait for types with temporary views that are somewhat stable.
+///
+/// These views can be soundly lifetime-extended (or, in the case of raw pointers, continue to be
+/// soundly accessed) under specific conditions.
 ///
 /// This trait is intended to be useful for self-referential types.
 ///
@@ -192,9 +194,10 @@ pub type ViewMut<'a, T, Upper = MaxUpperBound>
 /// [`StableDeref`]: https://docs.rs/stable_deref_trait/1.2.1/stable_deref_trait/trait.StableDeref.html
 /// [is unsound]: https://github.com/Storyyeller/stable_deref_trait/issues/15#issuecomment-3714995546
 pub unsafe trait AliasableView<Upper: UpperBound = MaxUpperBound> {
+    /// A temporary (but somewhat stable) view of the implementing type.
     type View: LendFamily<Upper>;
 
-    /// Get a temporary view of this type.
+    /// Get a temporary (but somewhat stable) view of this type.
     ///
     /// # Guarantees for Unsafe Code
     /// The returned view can be used at a given moment so long as, starting from when the view
@@ -219,8 +222,10 @@ pub unsafe trait AliasableView<Upper: UpperBound = MaxUpperBound> {
     fn view(&self) -> View<'_, Self, Upper>;
 }
 
-/// A trait for types with temporary mutable views that can be soundly lifetime-extended (or, in
-/// the case of raw pointers, continue to be soundly accessed) under specific conditions.
+/// A trait for types with temporary mutable views that are somewhat stable.
+///
+/// These mutable views can be soundly lifetime-extended (or, in the case of raw pointers, continue
+/// to be soundly accessed) under specific conditions.
 ///
 /// This trait is intended to be useful for self-referential types.
 ///
@@ -354,9 +359,10 @@ pub unsafe trait AliasableView<Upper: UpperBound = MaxUpperBound> {
 /// [`AliasableRefMut<'a, T>`]: crate::data_source::aliasable::AliasableRefMut
 /// [`Self::ViewMut`]: AliasableViewMut::ViewMut
 pub unsafe trait AliasableViewMut<Upper: UpperBound = MaxUpperBound>: AliasableView<Upper> {
+    /// A temporary (but somewhat stable) mutable view of the implementing type.
     type ViewMut: LendFamily<Upper>;
 
-    /// Get a temporary mutable view of this type.
+    /// Get a temporary (but somewhat stable) mutable view of this type.
     ///
     /// # Guarantees for Unsafe Code
     /// The returned view can be used at a given moment so long as, starting from when the view
@@ -425,9 +431,20 @@ pub unsafe trait AliasableViewMut<Upper: UpperBound = MaxUpperBound>: AliasableV
 /// [`mem::forget`]: core::mem::forget
 pub unsafe trait AliasableClone: AliasableView + Clone {}
 
+/// A trait for types with a canonical aliasable version (which at least implements
+/// [`AliasableView`]).
+///
+/// This trait is intended to improve ergonomics for types similar to `Box<T>` or `&mut T`
+/// in circumstances where an aliasable type is needed.
+///
+/// For a type which is *already* aliasable, the canonical aliasable version is itself.
 pub trait IntoAliasable<Upper: UpperBound = MaxUpperBound> {
+    /// The canonical aliasable version of this type.
     type IntoAliasable: AliasableView<Upper>;
 
+    /// Get the canonical aliasable version of this type.
+    ///
+    /// This conversion should be cheap.
     #[must_use]
     fn into_aliasable(self) -> Self::IntoAliasable;
 }
@@ -441,6 +458,13 @@ impl<T: AliasableView<Upper>, Upper: UpperBound> IntoAliasable<Upper> for T {
     }
 }
 
+/// A trait for types with a canonical aliasable version (which at least implements
+/// [`AliasableView`] and [`AliasableView`]).
+///
+/// This trait is intended to improve ergonomics for types similar to `Box<T>` or `&mut T`
+/// in circumstances where an aliasable type is needed.
+///
+/// For a type which is *already* aliasable, the canonical aliasable version is itself.
 pub trait IntoAliasableMut<Upper: UpperBound = MaxUpperBound>:
     IntoAliasable<Upper, IntoAliasable: AliasableViewMut<Upper>>
 {}

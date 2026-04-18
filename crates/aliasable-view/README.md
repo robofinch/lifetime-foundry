@@ -2,15 +2,17 @@
 <h1> Aliasable View </h1>
 </div>
 
-[<img alt="github" src="https://img.shields.io/badge/github-aliasable--view-08f?logo=github" height="20">](https://github.com/robofinch/attached-ref/)
+[<img alt="github" src="https://img.shields.io/badge/github-aliasable--view-08f?logo=github" height="20">](https://github.com/robofinch/lifetime-foundry/tree/main/crates/aliasable-view)
 [![Latest version](https://img.shields.io/crates/v/aliasable-view.svg)](https://crates.io/cratesaliasable-view)
 [![Documentation](https://img.shields.io/docsrs/aliasable-view)](https://docs.rs/aliasable-view/0)
 [![Apache 2.0 or MIT license.](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](#license)
 
 # Overview
 
-This crate provides [`AliasableView`], [`AliasableViewMut`], and [`CloneableAliasable`] traits
-which prohibit certain actions, such as moving a value, from invalidating the temporary "views"
+Get temporary, but somewhat stable, "views" of values.
+
+This crate provides [`AliasableView`], [`AliasableViewMut`], and [`AliasableClone`] traits
+which prohibit certain actions, such as moving a value, from invalidating the temporary views
 of values implementing the traits.
 
 The traits are intended to be useful for self-referential structs; aliasable source data can be
@@ -45,11 +47,11 @@ source value is moved does not seem critical for the soundness of self-referenti
 crate's traits more narrowly focus on the properties needed for lifetime transmutes (or lifetime
 erasure) of self-references to be sound in self-referential structs.
 
-That does imply, for example, that wacky implementations of [`AliasableViewMut`] that return a new
-value from  [`Box::leak`] are considered sound, a `MyString` type may provide "views" of a
+That does imply, for example, that a wacky implementation of [`AliasableViewMut`] can soundly return
+a different value from [`Box::leak`] on each call, a `MyString` type may provide "views" of a
 source string by cloning it on every call, and a `MyVec<T>` may implement [`AliasableView`] by
-using internal mutability to randomly choose which index from which to return a `&T` view. Such
-oddities are probably not very useful, but neither do they harm soundness.
+returning a `&T` view to an element which is randomly chosen on each call. Such oddities are
+probably not very useful, but neither do they harm soundness.
 
 (Moreover, the idea of a "stable" deref does not extend well to arbitrary lifetime-infected types.)
 
@@ -75,7 +77,7 @@ any additional terms or conditions.
 
 [`AliasableView`]: https://docs.rs/aliasable-view/0/aliasable_view/trait.AliasableView.html
 [`AliasableViewMut`]: https://docs.rs/aliasable-view/0/aliasable_view/trait.AliasableViewMut.html
-[`CloneableAliasable`]: https://docs.rs/aliasable-view/0/aliasable_view/trait.CloneableAliasable.html
+[`AliasableClone`]: https://docs.rs/aliasable-view/0/aliasable_view/trait.AliasableClone.html
 [`AliasableRefMut<'_, T>`]: https://docs.rs/aliasable-view/0/aliasable_view/struct.AliasableRefMut.html
 [`AliasableBox<T>`]: https://docs.rs/aliasable-view/0/aliasable_view/struct.AliasableBox.html
 [`Box::leak`]: https://doc.rust-lang.org/std/boxed/struct.Box.html#method.leak

@@ -147,7 +147,7 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     ///   does not trigger any problematic exclusive retag, so that condition is fulfilled, and
     ///   methods of `AliasableRefMut` are freely permitted to invalidate other pointers and
     ///   references.
-    /// - `AliasableRefMut` does not implement `CloneableAliasable`.
+    /// - `AliasableRefMut` does not implement [`AliasableClone`].
     ///
     /// ### Converting `self.ptr` into a reference
     /// - It's always properly aligned; none of `AliasableRefMut`'s `&mut` methods mutate the
@@ -229,6 +229,8 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     ///     is live, no pointers or references not derived from the returned reference (whether
     ///     previously existing or constructed while the returned reference is live) will access
     ///     (or assert exclusive permissions over) the pointee of the returned reference's pointee.
+    ///
+    /// [`AliasableClone`]: crate::traits::AliasableClone
     ptr:       NonNull<T>,
     _variance: PhantomData<&'a mut T>,
 }

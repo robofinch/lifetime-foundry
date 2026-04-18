@@ -2,7 +2,7 @@
 <h1> Attached-Ref </h1>
 </div>
 
-[<img alt="github" src="https://img.shields.io/badge/github-attached--ref-08f?logo=github" height="20">](https://github.com/robofinch/attached-ref/)
+[<img alt="github" src="https://img.shields.io/badge/github-attached--ref-08f?logo=github" height="20">](https://github.com/robofinch/lifetime-foundry/tree/main/crates/attached-ref)
 [![Latest version](https://img.shields.io/crates/v/attached-ref.svg)](https://crates.io/crates/attached-ref)
 [![Documentation](https://img.shields.io/docsrs/attached-ref)](https://docs.rs/attached-ref/0)
 [![Apache 2.0 or MIT license.](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](#license)
