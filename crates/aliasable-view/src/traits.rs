@@ -423,6 +423,11 @@ pub unsafe trait AliasableViewMut<Upper: UpperBound = MaxUpperBound>: AliasableV
 /// seen as a special case where no operations are guaranteed to increase the size of the
 /// conceptual pool.)
 ///
+/// Any consistent definition of a "conceptual pool" for a type which allows these requirements
+/// to be satisfied can be used (and that definition need not be documented). Note that a
+/// value must be in exactly one pool at all times, and a view must be associated with exactly one
+/// pool at all times (although that pool may be empty in the case of invalidated views).
+///
 /// ## Requirement 1
 ///
 /// A source `Self` value is always in a nonempty pool, containing at least itself. If a type

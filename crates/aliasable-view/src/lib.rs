@@ -27,7 +27,9 @@ extern crate std;
 
 
 mod traits;
+mod macros;
 mod aliasable;
+
 mod core_impls;
 
 #[cfg(feature = "alloc")]
@@ -45,3 +47,11 @@ pub use self::{
         IntoAliasable, IntoAliasableMut, View, ViewMut,
     },
 };
+
+
+#[doc(hidden)]
+pub mod __private_macro_utils {
+    pub use variance_family;
+
+    pub use crate::macros::unsafe_map_aliasable_impl;
+}

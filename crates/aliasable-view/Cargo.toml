@@ -20,8 +20,8 @@ all-features = true
 
 
 [dependencies]
-variance-family.workspace = true
-either = { workspace = true, optional = true }
+variance-family = { workspace = true, default-features = false }
+either = { workspace = true, default-features = false, optional = true }
 
 [features]
 default = ["std"]
