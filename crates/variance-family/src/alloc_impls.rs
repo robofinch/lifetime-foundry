@@ -45,6 +45,7 @@ generic_wrapper! {
     where {T: ?Sized}
 }
 
+#[cfg(target_has_atomic = "ptr")]
 generic_wrapper! {
     impl<{
         // SAFETY: `Arc<T>` is covariant over `T`.
