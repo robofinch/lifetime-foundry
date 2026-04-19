@@ -176,14 +176,14 @@
 ///     // Remember, if the type contains values of type `V` which are not considered view
 ///     // components, then you **must** ensure that `V: 'static` so that non-view components
 ///     // do not have non-`'static` references.
-///     unsafe impl<.., {const FOO: u8, V: 'static}> MapAliasable<_>
+///     unsafe impl<.., {const FOO: u8, V: 'static + Clone}> MapAliasable<_>
 ///     // Start by listing any type parameters not among `T1, .., Tn`. Those last parameters
 ///     // are included for you. Each parameter goes in its own set of braces.
 ///     for path::to::your::Type<{'static}, {FOO}, {V}, ..>
 ///     // `where {...}` is optional.
 ///     where {
 ///         // Any additional where-bounds for the "trait impl" of `MapAliasable` must go here.
-///         T2: ?Sized,
+///         T2: ?Sized + Debug,
 ///     }
 ///     {
 ///         // The `T1, .., Tn` and `WithParams` associated types are not included, since the
@@ -193,14 +193,25 @@
 ///             // You fill in this implementation for your type.
 ///
 ///             // Example:
-///             path::to::your::Type(map_1(&self.1), map_2(&self.3))
+///             path::to::your::Type(self.0, map_1(&self.1), self.2.clone(), map_2(&self.3))
 ///         }
 ///
 ///         fn map_mut<..>(&mut self, ..) -> _ where .. {
 ///             // You fill in this implementation for your type.
 ///
 ///             // Example:
-///             path::to::your::Type(map_1(&mut self.1), map_2(&mut self.3))
+///             path::to::your::Type(self.0, map_1(&mut self.1), self.2.clone(), map_2(&mut self.3))
+///         }
+///     }
+///
+///     // Additional safe impl of `IntoAliasable` and `IntoAliasableMut`
+///     impl<..> IntoAliasable<_> + IntoAliasableMut<_> for _ where {
+///         // Where-bounds from the top impl are not repeated. These where-bounds are optional.
+///         T2: Debug, // Must be `Sized`
+///     } {
+///         // Uses similar syntax as above.
+///         fn map_owned<..>(self, ..) -> _ where .. {
+///             path::to::your::Type(self.0, map_1(self.1), self.2, map_2(self.3))
 ///         }
 ///     }
 /// }
@@ -237,6 +248,15 @@ macro_rules! map_aliasable {
 
             fn map_mut<..>(&mut $self_mut:ident, ..) -> _ where .. {
                 $($map_mut_impl:tt)*
+            }
+        }
+
+        // Additional safe impl of `IntoAliasable` and `IntoAliasableMut`
+        impl<..> IntoAliasable<_> + IntoAliasableMut<_> for _
+        $(where {$($where_bounds_2:tt)*})?
+        {
+            fn map_owned<..>($self_owned:ident, ..) -> _ where .. {
+                $($map_owned_impl:tt)*
             }
         }
     } => {
@@ -303,25 +323,7 @@ macro_rules! map_aliasable {
                 }
             }
 
-            impl<
-                Upper: $crate::__macro::variance_family::UpperBound,
-                $(
-                    $t: $crate::AliasableView<Upper, $(View: $($view_bounds)*)?>,
-                )*
-                $($($impl_params)*)?
-            > $crate::IntoAliasable<Upper>
-            for $($name)::+<$($($generics)*,)* $($t),*>
-            where
-                for<'maybe_sat> Self: Sized,
-                $($($where_bounds)*)?
-            {
-                type IntoAliasable = Self;
 
-                #[inline]
-                fn into_aliasable(self) -> Self {
-                    self
-                }
-            }
 
             // SAFETY:
             // Moves or coercions (in any quantity and order) of `self` cannot invalidate any
@@ -369,22 +371,6 @@ macro_rules! map_aliasable {
                     $($map_mut_impl)*
                 }
             }
-
-            impl<
-                Upper: $crate::__macro::variance_family::UpperBound,
-                $(
-                    $t: $crate::AliasableViewMut<
-                        Upper,
-                        $(View: $($view_bounds)*, ViewMut: $($view_bounds)*)?
-                    >,
-                )*
-                $($($impl_params)*)?
-            > $crate::IntoAliasableMut<Upper>
-            for $($name)::+<$($($generics)*,)* $($t),*>
-            where
-                for<'maybe_sat> Self: Sized,
-                $($($where_bounds)*)?
-            {}
 
             // SAFETY:
             // We can define the conceptual pool associated with a `self: Self` value as the set of
@@ -449,6 +435,58 @@ macro_rules! map_aliasable {
                 $($($where_bounds)*)?
             {}
 
+            // The below safe impls *could* be vulnerable to code injection, but they are not
+            // depended on for soundness in this macro, so that's fine.
+            impl<
+                Upper: $crate::__macro::variance_family::UpperBound,
+                $(
+                    $t: $crate::IntoAliasable<
+                        Upper,
+                        $(IntoAliasable: AliasableView<Upper, View: $($view_bounds)*>,)?
+                    >,
+                )*
+                $($($impl_params)*)?
+            > $crate::IntoAliasable<Upper>
+            for $($name)::+<$($($generics)*,)* $($t),*>
+            where
+                for<'maybe_sat> Self: Sized,
+                $($($where_bounds_2)*)?
+            {
+                type IntoAliasable = $($name)::+<
+                    $($($generics)*,)*
+                    $(<$t as $crate::IntoAliasable<Upper>>::IntoAliasable),*
+                >;
+
+                #[inline]
+                fn into_aliasable($self_owned) -> Self::IntoAliasable {
+                    $(
+                        let $map = <$t as $crate::IntoAliasable<Upper>>::into_aliasable;
+                    )*
+
+                    // Rust has paired `{` and `}` delimiters, so `map_impl` can't do anything
+                    // too crazy.
+                    $($map_owned_impl)*
+                }
+            }
+
+            impl<
+                Upper: $crate::__macro::variance_family::UpperBound,
+                $(
+                    $t: $crate::IntoAliasableMut<
+                        Upper,
+                        $(IntoAliasable: AliasableMut<
+                            Upper,
+                            View: $($view_bounds)*, ViewMut: $($view_bounds)*
+                        >,)?
+                    >,
+                )*
+                $($($impl_params)*)?
+            > $crate::IntoAliasableMut<Upper>
+            for $($name)::+<$($($generics)*,)* $($t),*>
+            where
+                for<'maybe_sat> Self: Sized,
+                $($($where_bounds_2)*)?
+            {}
         };
     };
 }

@@ -15,6 +15,7 @@
 
 #![expect(unsafe_code, reason = "implement the unsafe `aliasable-view` traits")]
 #![expect(clippy::absolute_paths, reason = "one-off uses of many different types")]
+#![warn(clippy::missing_inline_in_public_items, reason = "trivial impls")]
 
 use variance_family::{Unvarying, UpperBound, VaryingRef, VaryingRefMut};
 
@@ -52,6 +53,12 @@ map_aliasable! {
 
         fn map_mut<..>(&mut self, ..) -> _ where .. {
             self.each_mut().map(map)
+        }
+    }
+
+    impl<..> IntoAliasable<_> + IntoAliasableMut<_> for _ {
+        fn map_owned<..>(self, ..) -> _ where .. {
+            self.map(map)
         }
     }
 }
@@ -106,6 +113,17 @@ macro_rules! aliasable_tuple {
                                 $map(&mut self.$index),
                             )*
                             $map_last(&mut self.$index_last),
+                        )
+                    }
+                }
+
+                impl<..> IntoAliasable<_> + IntoAliasableMut<_> for _ {
+                    fn map_owned<..>(self, ..) -> _ where .. {
+                        (
+                            $(
+                                $map(self.$index),
+                            )*
+                            $map_last(self.$index_last),
                         )
                     }
                 }
@@ -178,6 +196,12 @@ map_aliasable! {
         }
 
         fn map_mut<..>(&mut self, ..) -> _ where .. {
+            ()
+        }
+    }
+
+    impl<..> IntoAliasable<_> + IntoAliasableMut<_> for _ {
+        fn map_owned<..>(self, ..) -> _ where .. {
             ()
         }
     }
@@ -393,6 +417,12 @@ map_aliasable! {
             self.as_mut().map(map)
         }
     }
+
+    impl<..> IntoAliasable<_> + IntoAliasableMut<_> for _ {
+        fn map_owned<..>(self, ..) -> _ where .. {
+            self.map(map)
+        }
+    }
 }
 
 
@@ -453,6 +483,12 @@ map_aliasable! {
 
         fn map_mut<..>(&mut self, ..) -> _ where .. {
             self.as_mut().map(map_ok).map_err(map_err)
+        }
+    }
+
+    impl<..> IntoAliasable<_> + IntoAliasableMut<_> for _ {
+        fn map_owned<..>(self, ..) -> _ where .. {
+            self.map(map_ok).map_err(map_err)
         }
     }
 }
