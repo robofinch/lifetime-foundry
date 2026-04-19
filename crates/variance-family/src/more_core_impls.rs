@@ -2,7 +2,6 @@
 //!
 //! - `cell::{OnceCell, LazyCell}`,
 //! - `cmp::Ordering`,
-//! - `convert::Infallible`,
 //! - `mem::{ManuallyDrop, MaybeUninit}`,
 //! - `num::NonZero*`,
 //! - `ptr::NonNull`,
@@ -21,13 +20,11 @@ use crate::{
 
 
 // ================================================================
-//  `cmp::Ordering`, `convert::Infallible`,
-//  `num::NonZero*`, `sync::atomic::*`
+//  `cmp::Ordering`, `num::NonZero*`, `sync::atomic::*`
 // ================================================================
 
 concrete_types!(
     core::cmp::Ordering,
-    core::convert::Infallible,
     core::num::NonZeroI8, core::num::NonZeroI16, core::num::NonZeroI32, core::num::NonZeroI64,
     core::num::NonZeroI128, core::num::NonZeroIsize,
     core::num::NonZeroU8, core::num::NonZeroU16, core::num::NonZeroU32, core::num::NonZeroU64,

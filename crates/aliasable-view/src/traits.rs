@@ -31,11 +31,12 @@ pub type ViewMut<'a, T, Upper = MaxUpperBound>
 /// impl cannot be provided due to trait coherence concerns.
 ///
 /// # Safety
-/// Where the implementor's type is `Self`, a value of type [`View<'a, Self>`] obtained from
-/// applying [`AliasableView::view`] to a source `Self` value must not be invalidated by applying
-/// the following three operations (in any quantity and ordering) to the source `Self` value:
+/// Where the implementor's type is `Self`, while any lifetime parameters of `Self` have not yet
+/// expired, a value of type [`View<'a, Self>`] obtained from applying [`AliasableView::view`] to a
+/// source `Self` value must not be invalidated by applying the following three operations (in any
+/// quantity and ordering) to the source `Self` value:
 /// - moves,
-/// - [coercions] (which may or may not involve moves),
+/// - [coercions] (which may or may not involve moves, and may read inline data),
 /// - any (sound) immutable operation (that is, one operating on a `&` reference).
 ///
 /// This includes, say, coercing the `Self` value to something else, performing an immutable
@@ -46,6 +47,11 @@ pub type ViewMut<'a, T, Upper = MaxUpperBound>
 /// (perhaps after moving it into `Box::leak`), are trivially permitted as no-ops. The bullet point
 /// for coercions is arguably covered by the other two cases (together with this note about
 /// no-ops), but it's listed for the sake of caution.
+///
+/// The clause about lifetime parameters expiring ensures that, say, `&'a T` can implement this
+/// trait, even though its backing data may become invalid after lifetime `'a` (even if the
+/// reference is never mutated or dropped, and is instead passed to `mem::forget`... not that
+/// matters much for a `Copy` type).
 ///
 /// ## Implications for Users
 /// ### Sound usage of a view
@@ -97,8 +103,9 @@ pub type ViewMut<'a, T, Upper = MaxUpperBound>
 /// ## More details for Implementors
 /// To elaborate on what is meant by the prohibition against certain operations "invalidating"
 /// views, it must be sound to lifetime-extend a `View<'a, Self>` view and continue using it as
-/// long as operations on its source `self` value are limited to the three stated cases. It
-/// suffices to ensure that (where `'a` is the varying lifetime parameter of [`Self::View`]):
+/// long as operations on its source `self` value are limited to the three stated cases (and as
+/// long as lifetime parameters of `Self` do not expire). It suffices to ensure that (where `'a` is
+/// the varying lifetime parameter of [`Self::View`]):
 /// - The pointees of pointers in the `View<'a, Self>` view which are assumed to be valid for shared
 ///   access during `'a`, such as `&'a T` or [`cell::Ref<'a, T>`], are not mutated (except inside
 ///   [`UnsafeCell`]) or otherwise exclusively accessed by moves or coercions of values of type
@@ -212,8 +219,8 @@ pub unsafe trait AliasableView<Upper: UpperBound = MaxUpperBound> {
     ///
     /// # Guarantees for Unsafe Code
     /// The returned view can be used at a given moment so long as, starting from when the view
-    /// is returned from this function up to when it is used, only the following three operations
-    /// are performed on the source `Self`:
+    /// is returned from this function up to when it is used, any lifetime parameters of `Self`
+    /// have not expired and only the following three operations are performed on the source `Self`:
     /// - moves of the source `Self` value (which may have been coerced to a different type),
     /// - performing [coercions] on a value of type `Self` that may or may not involve moves,
     /// - any (sound) operation on a value of type `&Self` (which includes arbitrary operations on
@@ -249,11 +256,12 @@ pub unsafe trait AliasableView<Upper: UpperBound = MaxUpperBound> {
 /// blanket impl cannot be provided due to trait coherence concerns.
 ///
 /// # Safety
-/// Where the implementor's type is `Self`, a value of type [`ViewMut<'a, Self>`] obtained from
-/// applying [`AliasableViewMut::view_mut`] to a source `Self` value must not be invalidated by
-/// applying the following two operations (in any quantity and ordering) to the source `Self` value:
+/// Where the implementor's type is `Self`, while any lifetime parameters of `Self` have not
+/// expired, a value of type [`ViewMut<'a, Self>`] obtained from applying
+/// [`AliasableViewMut::view_mut`] to a source `Self` value must not be invalidated by applying the
+/// following two operations (in any quantity and ordering) to the source `Self` value:
 /// - moves,
-/// - [coercions] (which may or may not involve moves).
+/// - [coercions] (which may or may not involve moves, and may read inline data).
 ///
 /// This includes, say, coercing the `Self` value to something else, coercing it to yet another
 /// type, and moving that doubly-coerced value.
@@ -261,7 +269,8 @@ pub unsafe trait AliasableView<Upper: UpperBound = MaxUpperBound> {
 /// Actions with no effect on the source value of a view, including *not* running its destructor
 /// (perhaps after moving it into `Box::leak`), are trivially permitted as no-ops. The bullet point
 /// for coercions is arguably covered by the other case (together with this note about
-/// no-ops), but it's listed for the sake of caution.
+/// no-ops), since the data in the view would be invalidated by moves if a coercion reading inline
+/// data would invalidate the view, but it's listed for the sake of caution.
 ///
 /// ## Implications for Users
 /// ### Sound usage of a view
@@ -314,8 +323,9 @@ pub unsafe trait AliasableView<Upper: UpperBound = MaxUpperBound> {
 /// ## More details for Implementors
 /// To elaborate on what is meant by the prohibition against certain operations "invalidating"
 /// views, it must be sound to lifetime-extend a `ViewMut<'a, Self>` view and continue using it as
-/// long as operations on its source `self` value are limited to the two stated cases. It
-/// suffices to ensure that (where `'a` is the varying lifetime parameter of [`Self::ViewMut`]):
+/// long as operations on its source `self` value are limited to the two stated cases (and as
+/// long as lifetime parameters of `Self` do not expire). It suffices to ensure that (where `'a` is
+/// the varying lifetime parameter of [`Self::ViewMut`]):
 /// - the pointees of pointers in the `ViewMut<'a, Self>` view which are assumed to be valid for
 ///   shared access during `'a`, such as `&'a T` or [`cell::Ref<'a, T>`], are not mutated (except
 ///   inside [`UnsafeCell`]) or otherwise exclusively accessed by moves or coercions of type `Self`
@@ -388,8 +398,8 @@ pub unsafe trait AliasableViewMut<Upper: UpperBound = MaxUpperBound>: AliasableV
     ///
     /// # Guarantees for Unsafe Code
     /// The returned view can be used at a given moment so long as, starting from when the view
-    /// is returned from this function up to when it is used, only the following two operations
-    /// are performed on the source `Self`:
+    /// is returned from this function up to when it is used, any lifetime parameters of `Self`
+    /// have not expired and only the following two operations are performed on the source `Self`:
     /// - moves of the source `Self` value (which may have been coerced to a different type),
     /// - performing [coercions] on a value of type `Self` that may or may not involve moves.
     ///
@@ -439,7 +449,8 @@ pub unsafe trait AliasableViewMut<Upper: UpperBound = MaxUpperBound>: AliasableV
 ///
 /// Applying the three operations listed by [`AliasableView::view`] (moves, [coercions], and any
 /// sound operation on an immutable `&` reference) in any quantity and ordering to a value in the
-/// pool **must not** remove that value from the pool.
+/// pool **must not** remove that value from the pool. The pool might be emptied after any lifetime
+/// parameters of `Self` expire.
 ///
 /// Actions with no effect on a value in the pool, including *not* running its destructor
 /// (perhaps after moving it into `Box::leak`), are trivially permitted as no-ops.

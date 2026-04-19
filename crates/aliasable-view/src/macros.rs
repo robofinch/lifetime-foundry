@@ -189,14 +189,14 @@
 ///         // The `T1, .., Tn` and `WithParams` associated types are not included, since the
 ///         // information you provide above is sufficient to define them.
 ///
-///         fn map<'a, ..>(..) -> _ where .. {
+///         fn map<..>(&self, ..) -> _ where .. {
 ///             // You fill in this implementation for your type.
 ///
 ///             // Example:
 ///             path::to::your::Type(map_1(&self.1), map_2(&self.3))
 ///         }
 ///
-///         fn map_mut<'a, ..>(..) -> _ where .. {
+///         fn map_mut<..>(&mut self, ..) -> _ where .. {
 ///             // You fill in this implementation for your type.
 ///
 ///             // Example:
@@ -227,20 +227,31 @@ macro_rules! map_aliasable {
             )),* $(,)?
         ];
 
-        $unsafe:ident impl<.., {$($impl_params:tt)*}> MapAliasable<_>
+        unsafe impl<..$(, {$($impl_params:tt)*})?> MapAliasable<_>
         for $($name:ident)::+<$({$($generics:tt)*},)* ..>
         $(where {$($where_bounds:tt)*})?
         {
-            fn map<$a:lifetime, ..>(..) -> _ where .. {$($map_impl:tt)*}
+            fn map<..>(&$self_ref:ident, ..) -> _ where .. {
+                $($map_impl:tt)*
+            }
 
-            fn map_mut<$b:lifetime, ..>(..) -> _ where .. {$($map_mut_impl:tt)*}
+            fn map_mut<..>(&mut $self_mut:ident, ..) -> _ where .. {
+                $($map_mut_impl:tt)*
+            }
         }
     } => {
-        const _: () = $unsafe { $crate::__private_macro_utils::unsafe_map_aliasable_impl() };
+        // SAFETY: Asserted by user of this macro.
+        const _: () = unsafe { $crate::__macro::unsafe_map_aliasable() };
 
         #[expect(
+            unused_lifetimes,
+            reason = "if a bound is unsatisfiable, the for<'maybe_unsat> lifetime binder \
+                      means that the trait will simply never be implemented, \
+                      instead of the impossible bound causing a compilation error",
+        )]
+        #[expect(
             unsafe_code,
-            reason = "lint is moved to `unsafe_map_aliasable_impl` for a clearer error message",
+            reason = "lint is moved to `unsafe_map_aliasable` for a clearer error message",
         )]
         const _: () = {
             // SAFETY:
@@ -262,11 +273,11 @@ macro_rules! map_aliasable {
             // `self` do not invalidate the value returned by `self.view()`, so this
             // implementation is sound.
             unsafe impl<
-                Upper: $crate::__private_macro_utils::variance_family::UpperBound,
+                Upper: $crate::__macro::variance_family::UpperBound,
                 $(
                     $t: $crate::AliasableView<Upper, $(View: $($view_bounds)*)?>,
                 )*
-                $($impl_params)*
+                $($($impl_params)*)?
             > $crate::AliasableView<Upper>
             for $($name)::+<$($($generics)*,)* $($t),*>
             where
@@ -280,14 +291,35 @@ macro_rules! map_aliasable {
                 // We define `Upper` before expanding untrusted `tt` tokens, so by macro hygiene,
                 // this mention of `Upper` prevents any of them from switching out this unsafe
                 // impl.
-                fn view(&self) -> $crate::View<'_, Self, Upper> {
+                #[inline]
+                fn view(&$self_ref) -> $crate::View<'_, Self, Upper> {
                     $(
-                        let $map = <T as $crate::AliasableView<Upper>>::view;
+                        let $map = <$t as $crate::AliasableView<Upper>>::view;
                     )*
 
                     // Rust has paired `{` and `}` delimiters, so `map_impl` can't do anything
                     // too crazy.
                     $($map_impl)*
+                }
+            }
+
+            impl<
+                Upper: $crate::__macro::variance_family::UpperBound,
+                $(
+                    $t: $crate::AliasableView<Upper, $(View: $($view_bounds)*)?>,
+                )*
+                $($($impl_params)*)?
+            > $crate::IntoAliasable<Upper>
+            for $($name)::+<$($($generics)*,)* $($t),*>
+            where
+                for<'maybe_sat> Self: Sized,
+                $($($where_bounds)*)?
+            {
+                type IntoAliasable = Self;
+
+                #[inline]
+                fn into_aliasable(self) -> Self {
+                    self
                 }
             }
 
@@ -305,14 +337,14 @@ macro_rules! map_aliasable {
             // Thus, moving or coercing `self` (in any quantity and order) does not
             // invalidate the value returned by `self.view_mut()`, so this implementation is sound.
             unsafe impl<
-                Upper: $crate::__private_macro_utils::variance_family::UpperBound,
+                Upper: $crate::__macro::variance_family::UpperBound,
                 $(
                     $t: $crate::AliasableViewMut<
                         Upper,
                         $(View: $($view_bounds)*, ViewMut: $($view_bounds)*)?
                     >,
                 )*
-                $($impl_params)*
+                $($($impl_params)*)?
             > $crate::AliasableViewMut<Upper>
             for $($name)::+<$($($generics)*,)* $($t),*>
             where
@@ -326,9 +358,10 @@ macro_rules! map_aliasable {
                 // We define `Upper` before expanding untrusted `tt` tokens, so by macro hygiene,
                 // this mention of `Upper` prevents any of them from switching out this unsafe
                 // impl.
-                fn view_mut(&mut self) -> $crate::ViewMut<'_, Self, Upper> {
+                #[inline]
+                fn view_mut(&mut $self_mut) -> $crate::ViewMut<'_, Self, Upper> {
                     $(
-                        let $map = <T as $crate::AliasableViewMut<Upper>>::view_mut;
+                        let $map = <$t as $crate::AliasableViewMut<Upper>>::view_mut;
                     )*
 
                     // Rust has paired `{` and `}` delimiters, so `map_mut_impl` can't do anything
@@ -336,6 +369,22 @@ macro_rules! map_aliasable {
                     $($map_mut_impl)*
                 }
             }
+
+            impl<
+                Upper: $crate::__macro::variance_family::UpperBound,
+                $(
+                    $t: $crate::AliasableViewMut<
+                        Upper,
+                        $(View: $($view_bounds)*, ViewMut: $($view_bounds)*)?
+                    >,
+                )*
+                $($($impl_params)*)?
+            > $crate::IntoAliasableMut<Upper>
+            for $($name)::+<$($($generics)*,)* $($t),*>
+            where
+                for<'maybe_sat> Self: Sized,
+                $($($where_bounds)*)?
+            {}
 
             // SAFETY:
             // We can define the conceptual pool associated with a `self: Self` value as the set of
@@ -386,13 +435,13 @@ macro_rules! map_aliasable {
             // and the only non-`'static` data is in its view components, we thus have that the
             // view has not been invalidated.
             unsafe impl<
-                Upper: $crate::__private_macro_utils::variance_family::UpperBound,
-                $($t: $crate::AliasableClone<Upper>)*
-                $($impl_params)*
+                Upper: $crate::__macro::variance_family::UpperBound,
+                $($t: $crate::AliasableClone<Upper>,)*
+                $($($impl_params)*)?
             > $crate::AliasableClone<Upper>
             for $($name)::+<$($($generics)*,)* $($t),*>
             where
-                for<'a> Self: ::core::clone::Clone,
+                for<'maybe_sat> Self: ::core::clone::Clone,
                 // We define `Upper` before expanding untrusted `tt` tokens, so by macro hygiene,
                 // this mention of `Upper` prevents any of them from switching out this unsafe
                 // impl. There is still `where_bounds` below, but it can't do any damage.
@@ -411,4 +460,4 @@ macro_rules! map_aliasable {
 /// # Safety
 /// This function itself has no safety preconditions, but though the safety requirements for
 /// using [`map_aliasable`] must be upheld.
-pub const unsafe fn unsafe_map_aliasable_impl() {}
+pub const unsafe fn unsafe_map_aliasable() {}

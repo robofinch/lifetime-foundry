@@ -50,8 +50,8 @@ pub use self::{
 
 
 #[doc(hidden)]
-pub mod __private_macro_utils {
+pub mod __macro {
     pub use variance_family;
 
-    pub use crate::macros::unsafe_map_aliasable_impl;
+    pub use crate::macros::unsafe_map_aliasable;
 }

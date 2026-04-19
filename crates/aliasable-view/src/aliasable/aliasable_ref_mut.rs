@@ -144,14 +144,22 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     /// - [`AliasableView`] only prohibits the application of moves, coercions, and immutable
     ///   operations in any quantity and order to a `Self` value from invalidating pointers or
     ///   references derived from a call to [`AliasableView::view`] on that `Self` value
-    ///   (which converts `self.ptr` into a `&T`); the only methods of `AliasableRefMut` which
-    ///   invalidate such pointers and references are those which convert `self.ptr` to a `&mut T`,
-    ///   and functions which take `&Self` arguments are not permitted to do that.
+    ///   (which converts `self.ptr` into a `&T`), and permits the view to be invalidated once
+    ///   lifetime parameters of the implementing type expire.
+    ///
+    ///   The only methods of `AliasableRefMut` which invalidate such pointers and references are
+    ///   those which convert `self.ptr` to a `&mut T`, and functions which take `&Self` arguments
+    ///   are not permitted to do that. Once lifetime `'a` expires, references to the pointee
+    ///   of `self.ptr` might be invalidated through other means, which is fine.
     /// - [`AliasableViewMut`] only prohibits moves and coercions (in any quantity and order) on
     ///   a `Self` value from invalidating pointers or references derived from a call to
-    ///   [`AliasableViewMut::view_mut`] on that `Self` value; moving a `NonNull` does not trigger
-    ///   any problematic exclusive retag, so that condition is fulfilled, and methods of
-    ///   `AliasableRefMut` are freely permitted to invalidate other pointers and references.
+    ///   [`AliasableViewMut::view_mut`] on that `Self` value, and permits the view to be
+    ///   invalidated once lifetime parameters of the implementing type expire.
+    ///
+    ///   Moving a `NonNull` does not trigger any problematic exclusive retag, so that condition is
+    ///   fulfilled, and methods of `AliasableRefMut` are freely permitted to invalidate other
+    ///   pointers and references. Once lifetime `'a` expires, references to the pointee
+    ///   of `self.ptr` might be invalidated through other means, which is fine.
     /// - `AliasableRefMut` does not implement [`AliasableClone`].
     ///
     /// ### Converting `self.ptr` into a reference
@@ -373,6 +381,18 @@ where
     }
 }
 
+impl<'a, 'upper, T> IntoAliasable<&'upper ()> for &'a mut T
+where
+    T: ?Sized + 'upper,
+{
+    type IntoAliasable = AliasableRefMut<'a, T>;
+
+    #[inline]
+    fn into_aliasable(self) -> Self::IntoAliasable {
+        AliasableRefMut::from_mut(self)
+    }
+}
+
 // SAFETY: By the aliasing guarantee of `AliasableRefMut` for `&mut T` references obtained from
 // `DerefMut::deref_mut` (among other methods), performing moves or coercions (in any quantity
 // and order) on the source `Self` value will not invalidate the returned `&mut T` view.
@@ -390,23 +410,7 @@ where
     }
 }
 
-impl<'a, 'upper, T> IntoAliasable<&'upper ()> for &'a mut T
-where
-    'a: 'upper,
-    T: ?Sized + 'a,
-{
-    type IntoAliasable = AliasableRefMut<'a, T>;
-
-    fn into_aliasable(self) -> Self::IntoAliasable {
-        AliasableRefMut::from_mut(self)
-    }
-}
-
-impl<'a, 'upper, T> IntoAliasableMut<&'upper ()> for &'a mut T
-where
-    'a: 'upper,
-    T: ?Sized + 'a,
-{}
+impl<'upper, T: ?Sized + 'upper> IntoAliasableMut<&'upper ()> for &mut T {}
 
 // SAFETY: Since `AliasableRefMut<'_, T>` acts like `&mut T`,
 // it can be `Send` if `&mut T` is `Send`. We know that `&mut T` is `Send` iff `T` is `Send`.
@@ -422,7 +426,9 @@ impl<T: ?Sized + Debug> Debug for AliasableRefMut<'_, T> {
     }
 }
 
-impl<A: ?Sized + PartialEq<B>, B: ?Sized> PartialEq<AliasableRefMut<'_, B>> for AliasableRefMut<'_, A> {
+impl<A: ?Sized + PartialEq<B>, B: ?Sized> PartialEq<AliasableRefMut<'_, B>>
+for AliasableRefMut<'_, A>
+{
     fn eq(&self, other: &AliasableRefMut<'_, B>) -> bool {
         PartialEq::eq(&**self, &**other)
     }
@@ -442,7 +448,9 @@ impl<A: ?Sized + PartialEq<B>, B: ?Sized> PartialEq<&mut B> for AliasableRefMut<
 
 impl<T: ?Sized + Eq> Eq for AliasableRefMut<'_, T> {}
 
-impl<A: ?Sized + PartialOrd<B>, B: ?Sized> PartialOrd<AliasableRefMut<'_, B>> for AliasableRefMut<'_, A> {
+impl<A: ?Sized + PartialOrd<B>, B: ?Sized> PartialOrd<AliasableRefMut<'_, B>>
+for AliasableRefMut<'_, A>
+{
     fn partial_cmp(&self, other: &AliasableRefMut<'_, B>) -> Option<Ordering> {
         PartialOrd::partial_cmp(&**self, &**other)
     }

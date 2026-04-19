@@ -2,14 +2,19 @@
 //!
 //! - `[T]`,
 //! - `[T; N]`,
-//! - `(T1, ..., Tn)` of arities 0-12,
-//! - various primitives (`bool`, `char`, `f32`, `f64`, `i{N}`, `u{N}`, `str`)
+//! - `(T1, ..., Tn)` of arities 0-6,
+//! - various primitives (`bool`, `char`, `f32`, `f64`, `i{N}`, `u{N}`, `str`),
 //! - `cell::{Cell, Ref, RefCell, RefMut}`,
+//! - `convert::Infallible`,
 //! - `option::Option`,
 //! - `pin::Pin`,
 //! - `result::Result`.
+//!
+//! With the `more-impls` feature, also:
+//! - `(T1, ..., Tn)` of arities 7-12,
 
 #![expect(unsafe_code, reason = "assert variance and permission to impl traits for `core` types")]
+#![expect(clippy::absolute_paths, reason = "one-off uses of many different types")]
 
 use core::marker::PhantomData;
 
@@ -87,23 +92,28 @@ tuple_family!(T3, T1, T2);
 tuple_family!(T4, T1, T2, T3);
 tuple_family!(T5, T1, T2, T3, T4);
 tuple_family!(T6, T1, T2, T3, T4, T5);
-tuple_family!(T7, T1, T2, T3, T4, T5, T6);
-tuple_family!(T8, T1, T2, T3, T4, T5, T6, T7);
-tuple_family!(T9, T1, T2, T3, T4, T5, T6, T7, T8);
-tuple_family!(T10, T1, T2, T3, T4, T5, T6, T7, T8, T9);
-tuple_family!(T11, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
-tuple_family!(T12, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
+
+#[cfg(feature = "more-impls")]
+const _: () = {
+    tuple_family!(T7, T1, T2, T3, T4, T5, T6);
+    tuple_family!(T8, T1, T2, T3, T4, T5, T6, T7);
+    tuple_family!(T9, T1, T2, T3, T4, T5, T6, T7, T8);
+    tuple_family!(T10, T1, T2, T3, T4, T5, T6, T7, T8, T9);
+    tuple_family!(T11, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
+    tuple_family!(T12, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
+};
 
 
 // ================================================================
-//  `()`, `bool`, `char`, `f32`, `f64`, `i{N}`, `u{N}`, `str`
+//  `()`, `bool`, `char`, `f32`, `f64`, `i{N}`, `u{N}`, `str`,
+//  `convert::Infallible`,
 // ================================================================
 
 concrete_types!(
     (), bool, char, f32, f64,
     i8, i16, i32, i64, i128, isize,
     u8, u16, u32, u64, u128, usize,
-    str,
+    str, core::convert::Infallible,
 );
 
 

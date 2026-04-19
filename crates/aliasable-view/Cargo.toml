@@ -27,3 +27,5 @@ either = { workspace = true, default-features = false, optional = true }
 default = ["std"]
 std     = ["alloc", "variance-family/std"]
 alloc   = ["variance-family/alloc"]
+
+more-impls = ["variance-family/more-impls"]
