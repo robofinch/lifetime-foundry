@@ -74,6 +74,7 @@
 /// ```
 ///
 /// # Safety
+/// `unsafe(not_a_foreign_fundamental_type)`
 /// One safety condition for implementing [`WithLifetime`] requires that it *not* be implemented
 /// for family types not defined in your crate (with the exception of `variance-family`
 /// implementing its traits for types in `core`, `alloc`, and `std`).
@@ -302,7 +303,7 @@ pub(crate) use concrete_types;
 ///
 /// # Troubleshooting
 /// The most common error (if the macro parses successfully) is the varying type needing its
-/// generics to be `Sized`. You need to add an `(Is: Sized)` bound to contrain the `Is` associated
+/// generics to be `Sized`. You need to add an `(Is: Sized)` bound to constrain the `Is` associated
 /// type (of the relevant type family) to be `Sized`.
 ///
 /// # Examples
@@ -784,6 +785,8 @@ macro_rules! __either_variance_family {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __impl_with_lifetime {
+    // NOTE: `params`, `non_varying_wb`, and `varying_wb` could contain arbitrary Rust code.
+    // We need to prevent code injection from switching out impls.
     {
         impl<
             $varying:lifetime, $varying_single_use:lifetime, $($varying_single_use_param:lifetime,)?
@@ -813,6 +816,10 @@ macro_rules! __impl_with_lifetime {
             $($non_varying_wb)*
         {
             type Is = $varying_type;
+
+            fn protect_macros_from_code_injection_via_hygiene_projection(upper: Upper) -> Upper {
+                upper
+            }
         }
 
         // SAFETY: `ChangeBounds::prove_equal` is implemented with the function body `{ varying }`,
@@ -832,6 +839,10 @@ macro_rules! __impl_with_lifetime {
                 // Make the lifetime early-bound.
                 'other_lower: 'other_lower,
                 OtherUpper: $crate::UpperBound,
+                // This mostly-useless where-bound prevents `$params`, `$varying_wb`, and
+                // `$non_varying_wb` from injecting code that switches out this impl,
+                // thanks to hygiene protection.
+                Upper:,
             {
                 varying
             }
@@ -844,6 +855,8 @@ macro_rules! __impl_with_lifetime {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __impl_covariant_family {
+    // NOTE: `params`, `non_varying_wb`, and `varying_wb` could contain arbitrary Rust code.
+    // We need to prevent code injection from switching out impls.
     {
         impl<$varying:lifetime, {$($params:tt)*}> CovariantFamily<'_, _>
         for #[unsafe(not_a_foreign_fundamental_type)] $family_type:ty
@@ -872,6 +885,9 @@ macro_rules! __impl_covariant_family {
                 long: $crate::RawVarying<'long, 'lower, Upper, Self>,
             ) -> $crate::RawVarying<'short, 'lower, Upper, Self>
             where
+                // This where-bound prevents `$params`, `$varying_wb`, and `$non_varying_wb` from
+                // injecting code that switches out this impl,
+                // thanks to hygiene protection.
                 Upper: 'long,
                 'long: 'short,
                 'short: 'lower,
@@ -887,6 +903,8 @@ macro_rules! __impl_covariant_family {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __impl_contravariant_family {
+    // NOTE: `params`, `non_varying_wb`, and `varying_wb` could contain arbitrary Rust code.
+    // We need to prevent code injection from switching out impls.
     {
         impl<$varying:lifetime, {$($params:tt)*}> ContravariantFamily<'_, _>
         for #[unsafe(not_a_foreign_fundamental_type)] $family_type:ty
@@ -915,6 +933,8 @@ macro_rules! __impl_contravariant_family {
                 short: $crate::RawVarying<'short, 'lower, Upper, Self>,
             ) -> $crate::RawVarying<'long, 'lower, Upper, Self>
             where
+                // This where-bound prevents `$params`, `$varying_wb`, and `$non_varying_wb` from
+                // injecting code that switches out this impl, thanks to hygiene protection.
                 Upper: 'long,
                 'long: 'short,
                 'short: 'lower,
@@ -1226,6 +1246,10 @@ macro_rules! __impl_generic_wrapper {
         }
     };
 
+    // NOTE: `$impl_params`, `$generics`, and `$varying_generics` were manually parsed.
+    // They cannot inject pathological code.
+    // The contents of `$where_bounds` and `$*is_bound`, however, *can* (try to) inject
+    // pathological code, which needs to be guarded against.
     {
         {}
         {$($impl_params:tt)*}
@@ -1251,6 +1275,14 @@ macro_rules! __impl_generic_wrapper {
         for $($name)::+<$($generics)*>
         where
             Upper: $crate::UpperBound,
+            // Note: if any of these bounds were left out, this impl would be unsound.
+            // Conceivably, `covariant_is_bound` could, say, be
+            // `> { type Is = _ }` and thereby produce an unsound implementation... except
+            // then the below `protect_macros_from_code_injection_via_hygiene_projection`
+            // would fail to compile. There shouldn't be a way for expanding
+            // `covariant_is_bound`, `contravariant_is_bound`, `unvarying_is_bound`, or
+            // `where_bounds` to skip some bounds without changing out the impl body, too.
+            // (This reasoning also applied to below impls.)
             $(
                 $covariant_types: $crate::WithLifetime<
                     'varying, 'lower, Upper,
@@ -1272,6 +1304,10 @@ macro_rules! __impl_generic_wrapper {
             $($where_bounds)*
         {
             type Is = $($varying_name)::+<$($varying_generics)*>;
+
+            fn protect_macros_from_code_injection_via_hygiene_projection(upper: Upper) -> Upper {
+                upper
+            }
         }
 
         // SAFETY: See the first bullet point in the safety comment of the `WithLifetime` impl.
@@ -1309,6 +1345,9 @@ macro_rules! __impl_generic_wrapper {
             where
                 Self: $crate::WithLifetime<'varying, 'other_lower, OtherUpper>,
                 OtherUpper: $crate::UpperBound,
+                // Protect this impl against code injection, via hygiene protection.
+                // See above for more.
+                Upper:,
             {
                 varying.cast()
             }
@@ -1354,6 +1393,11 @@ macro_rules! __impl_generic_wrapper {
                 long: $crate::RawVarying<'long, 'lower, Upper, Self>,
             ) -> $crate::RawVarying<'short, 'lower, Upper, Self>
             where
+                // Prevents `$where_bounds` and `$*is_bound` from pathologically injecting code,
+                // thanks to hygiene protection. See above for more. Though, note in particular
+                // that `impl_params` contains data that we manually parsed. It cannot
+                // pathologically inject code, so introducing `Upper` after expanding those
+                // parameters leaves this hygiene protection intact.
                 Upper: 'long,
                 'long: 'short,
                 'short: 'lower,
@@ -1397,6 +1441,8 @@ macro_rules! __impl_generic_wrapper {
                 short: $crate::RawVarying<'short, 'lower, Upper, Self>,
             ) -> $crate::RawVarying<'long, 'lower, Upper, Self>
             where
+                // Prevents `$where_bounds` and `$*is_bound` from pathologically injecting code,
+                // thanks to hygiene protection. See above for more.
                 Upper: 'long,
                 'long: 'short,
                 'short: 'lower,
@@ -1413,6 +1459,8 @@ macro_rules! __impl_generic_wrapper {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __impl_varying_ref_wrapper {
+    // NOTE: `bound` and `where_bounds` could contain arbitrary Rust code.
+    // We need to prevent code injection from switching out impls.
     {
         $t:ident $((Is: $($bound:tt)*))?
         for $($name:ident)::+<$fam_t:ident>
@@ -1439,6 +1487,8 @@ macro_rules! __impl_varying_ref_wrapper {
                 long: $crate::RawVarying<'long, 'lower, &'upper (), Self>,
             ) -> $crate::RawVarying<'short, 'lower, &'upper (), Self>
             where
+                // This where-bound prevents `bound` and `where_bounds` from injecting code that
+                // switches out this impl, thanks to hygiene protection of `'upper`.
                 &'upper (): 'long,
                 'long: 'short,
                 'short: 'lower,
@@ -1457,6 +1507,8 @@ macro_rules! __impl_varying_ref_wrapper {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __impl_varying_ref_mut_wrapper {
+    // NOTE: `bound` and `where_bounds` could contain arbitrary Rust code.
+    // We need to prevent code injection from switching out impls.
     {
         $t:ident $((Is: $($bound:tt)*))?
         for $($name:ident)::+<$fam_t:ident>
@@ -1483,6 +1535,8 @@ macro_rules! __impl_varying_ref_mut_wrapper {
                 long: $crate::RawVarying<'long, 'lower, &'upper (), Self>,
             ) -> $crate::RawVarying<'short, 'lower, &'upper (), Self>
             where
+                // This where-bound prevents `bound` and `where_bounds` from injecting code that
+                // switches out this impl, thanks to hygiene protection of `'upper`.
                 &'upper (): 'long,
                 'long: 'short,
                 'short: 'lower,
@@ -1501,7 +1555,9 @@ macro_rules! __impl_varying_ref_mut_wrapper {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __impl_varying_with_lifetime {
-        {
+    // NOTE: `bound` and `where_bounds` could contain arbitrary Rust code.
+    // We need to prevent code injection from switching out impls.
+    {
         $t:ident $((Is: $($bound:tt)*))?
         for $($name:ident)::+<$fam_t:ident>
         as $($varying_name:ident)::+<'_, $varying_t:ident>
@@ -1522,6 +1578,12 @@ macro_rules! __impl_varying_with_lifetime {
             $($where_bounds)*
         {
             type Is = $($varying_name)::+<'varying, $varying_t::Is>;
+
+            fn protect_macros_from_code_injection_via_hygiene_projection(
+                upper: &'upper (),
+            ) -> &'upper () {
+                upper
+            }
         }
 
         // SAFETY: See the first bullet point in the safety comment of the `WithLifetime` impl.
@@ -1542,6 +1604,9 @@ macro_rules! __impl_varying_with_lifetime {
             where
                 Self: $crate::WithLifetime<'varying, 'other_lower, OtherUpper>,
                 OtherUpper: $crate::UpperBound,
+                // This where-bound prevents `bound` and `where_bounds` from injecting code that
+                // switches out this impl, thanks to hygiene protection of `Upper`.
+                Upper:,
             {
                 varying.cast()
             }

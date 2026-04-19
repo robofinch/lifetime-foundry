@@ -107,6 +107,17 @@ pub unsafe trait WithLifetime<
 >: ChangeBounds<'varying, 'lower, Upper, Self::Is> {
     /// The `'varying`-parameterized type, which must not use `'lower` or `Upper`.
     type Is: ?Sized;
+
+    /// Used to give `macro_rules!` macros a place to mention the `Upper` parameter.
+    ///
+    /// If the name of `Upper` is defined near the *start* of the `WithLifetime` impl, before any
+    /// `tt` tokens which might contain untrusted code are expanded, and is mentioned here near
+    /// the *end* of the impl, after any potentially-pathological `tt` tokens, then hygiene
+    /// protection ensures that code injection cannot switch out the `WithLifetime` impl.
+    #[doc(hidden)]
+    fn protect_macros_from_code_injection_via_hygiene_projection(upper: Upper) -> Upper {
+        upper
+    }
 }
 
 /// Enforce that `'lower` and `Upper` are solely used to constrain the `'varying` lifetime and

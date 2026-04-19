@@ -135,8 +135,8 @@ family over whatever types you wish (including types not defined in the same cra
 lifetime family).
 
 Various `macro_rules!` macros are provided by this crate to simplify implementation.
-`variance-family` internally uses those macros for *all* of its `unsafe impl`s, implying that th
- macros should be sufficient for most implementations.
+`variance-family` internally uses those macros for *all* of its `unsafe impl`s, implying that the
+macros should be sufficient for most implementations.
 
 # License
 
