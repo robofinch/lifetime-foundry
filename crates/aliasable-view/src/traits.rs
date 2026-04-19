@@ -22,20 +22,30 @@ pub type ViewMut<'a, T, Upper = MaxUpperBound>
 ///
 /// This trait is intended to be useful for self-referential types.
 ///
+/// # `IntoAliasable`
+///
+/// For consumers which need an aliasable type, consider accepting a type which implements
+/// <code>[IntoAliasable]<IntoAliasable = _></code>.
+///
+/// For implementors of `AliasableView`, remember to also implement [`IntoAliasable`]; a blanket
+/// impl cannot be provided due to trait coherence concerns.
+///
 /// # Safety
-/// Where the implementor's type is `Self`, the following operations must not invalidate any value
-/// of type [`View<'a, Self>`] obtained from applying [`AliasableView::view`] to a value in the
-/// below bullet points:
-/// - moving a value of type `Self` (or a value formerly of type `Self` that was coerced to a
-///   different type),
-/// - performing [coercions] on a value of type `Self` that may or may not involve moves,
-/// - performing any (sound) operation on a value of type `&Self` (which includes arbitrary
-///   operations on data transitively reachable via the `&Self` value).
+/// Where the implementor's type is `Self`, a value of type [`View<'a, Self>`] obtained from
+/// applying [`AliasableView::view`] to a source `Self` value must not be invalidated by applying
+/// the following three operations (in any quantity and ordering) to the source `Self` value:
+/// - moves,
+/// - [coercions] (which may or may not involve moves),
+/// - any (sound) immutable operation (that is, one operating on a `&` reference).
+///
+/// This includes, say, coercing the `Self` value to something else, performing an immutable
+/// operation on the coerced value, coercing it to yet another type, and moving that doubly-coerced
+/// value.
 ///
 /// Actions with no effect on the source value of a view, including *not* running its destructor
 /// (perhaps after moving it into `Box::leak`), are trivially permitted as no-ops. The bullet point
-/// for coercions is arguably covered by the bullet point for moves (and this note about no-ops),
-/// but it's listed for the sake of caution.
+/// for coercions is arguably covered by the other two cases (together with this note about
+/// no-ops), but it's listed for the sake of caution.
 ///
 /// ## Implications for Users
 /// ### Sound usage of a view
@@ -82,6 +92,7 @@ pub type ViewMut<'a, T, Upper = MaxUpperBound>
 /// sound approach is to wrap views in `ManuallyDrop` before calling the panicky function and only
 /// unwrap the views after the function's successful return; this ensures that views are not
 /// improperly accessed in their destructors during unwinding. A leak is far preferable to UB.
+/// (Using `Box::new_uninit()` to avoid unexpectedly dropping `self` is also possible.)
 ///
 /// ## More details for Implementors
 /// To elaborate on what is meant by the prohibition against certain operations "invalidating"
@@ -229,18 +240,28 @@ pub unsafe trait AliasableView<Upper: UpperBound = MaxUpperBound> {
 ///
 /// This trait is intended to be useful for self-referential types.
 ///
+/// # `IntoAliasableMut`
+///
+/// For consumers which need an aliasable type, consider accepting a type which implements
+/// <code>[IntoAliasableMut]<IntoAliasable = _></code>.
+///
+/// For implementors of `AliasableViewMut`, remember to also implement [`IntoAliasableMut`]; a
+/// blanket impl cannot be provided due to trait coherence concerns.
+///
 /// # Safety
-/// Where the implementor's type is `Self`, the following operations must not invalidate any value
-/// of type [`ViewMut<'a, Self>`] obtained from applying [`AliasableViewMut::view_mut`] to
-/// a value in the below bullet points:
-/// - moving a value of type `Self` (or a value formerly of type `Self` that was coerced to a
-///   different type),
-/// - performing [coercions] on a value of type `Self` that may or may not involve moves.
+/// Where the implementor's type is `Self`, a value of type [`ViewMut<'a, Self>`] obtained from
+/// applying [`AliasableViewMut::view_mut`] to a source `Self` value must not be invalidated by
+/// applying the following two operations (in any quantity and ordering) to the source `Self` value:
+/// - moves,
+/// - [coercions] (which may or may not involve moves).
+///
+/// This includes, say, coercing the `Self` value to something else, coercing it to yet another
+/// type, and moving that doubly-coerced value.
 ///
 /// Actions with no effect on the source value of a view, including *not* running its destructor
 /// (perhaps after moving it into `Box::leak`), are trivially permitted as no-ops. The bullet point
-/// for coercions is arguably covered by the bullet point for moves (and this note about no-ops),
-/// but it's listed for the sake of caution.
+/// for coercions is arguably covered by the other case (together with this note about
+/// no-ops), but it's listed for the sake of caution.
 ///
 /// ## Implications for Users
 /// ### Sound usage of a view
@@ -288,6 +309,7 @@ pub unsafe trait AliasableView<Upper: UpperBound = MaxUpperBound> {
 /// sound approach is to wrap views in `ManuallyDrop` before calling the panicky function and only
 /// unwrap the views after the function's successful return; this ensures that views are not
 /// improperly accessed in their destructors during unwinding. A leak is far preferable to UB.
+/// (Using `Box::new_uninit()` to avoid unexpectedly dropping `self` is also possible.)
 ///
 /// ## More details for Implementors
 /// To elaborate on what is meant by the prohibition against certain operations "invalidating"
@@ -298,7 +320,7 @@ pub unsafe trait AliasableView<Upper: UpperBound = MaxUpperBound> {
 ///   shared access during `'a`, such as `&'a T` or [`cell::Ref<'a, T>`], are not mutated (except
 ///   inside [`UnsafeCell`]) or otherwise exclusively accessed by moves or coercions of type `Self`
 ///   (which essentially implies that the pointees cannot be stored inline in `Self`; they must
-///   either be in static memory, on the heap, in some part of the stack that outlives `Self`, or
+///   be in static memory, on the heap, in some part of the stack that outlives `Self`, or
 ///   similar),
 /// - the pointees of pointers in the `ViewMut<'a, Self>` view which are assumed to be valid for
 ///   exclusive access during `'a`, such as `&'a mut T` or [`cell::RefMut<'a, T>`], are not accessed
@@ -392,44 +414,67 @@ pub unsafe trait AliasableViewMut<Upper: UpperBound = MaxUpperBound>: AliasableV
 /// to be implemented for types that are reference-counted *or* provide owned "views" that are
 /// never invalidated when the source `Self` is dropped.
 ///
+/// The safety requirements are closely modeled after the behavior of [`Rc`] and [`Arc`].
+///
 /// # Safety
-/// Where the implementor's type is `Self`, in addition to the operations prohibited by
-/// [`AliasableView`] from invalidating any value of type [`View<'a, Self>`] obtained
-/// from applying [`AliasableView::view`] to a source `Self` value, the following operation on a
-/// `Self` value must not invalidate its views obtained via [`AliasableView::view`]:
-/// - Dropping (that is, running the destructor of) the value of `Self` when at least one other
-///   sibling clone of that `Self` value has not been dropped.
+/// This trait is slightly more restrictive than [`AliasableView`]. Instead of a single source
+/// `Self` value, there is instead a conceptual *pool* of source values, and a view must not be
+/// violated as long as the source pool is nonempty. ([`AliasableView`]'s requirements can be
+/// seen as a special case where no operations are guaranteed to increase the size of the
+/// conceptual pool.)
 ///
-/// If `Self` also implements [`AliasableViewMut`], then in addition to the operations prohibited
-/// by [`AliasableViewMut`] from invalidating any value of type [`ViewMut<'a, Self>`] obtained
-/// from applying [`AliasableViewMut::view_mut`] to a source `Self` value, the following operation
-/// on a `Self` value must not invalidate its views obtained via [`AliasableViewMut::view_mut`]:
-/// - Dropping (that is, running the destructor of) the value of `Self` when at least one other
-///   sibling clone of that `Self` value has not been dropped.
+/// ## Requirement 1
 ///
-/// A "sibling clone" of a `val` value here means any `sibling` value which satisfies one or
-/// more of the following:
-/// - `sibling` is a clone of `val` (that is, `sibling` was constructed via [`Clone::clone`]
-///   or [`Clone::clone_from`] applied to a reference to `val`),
-/// - `val` is a clone of `sibling`,
-/// - `val` is a sibling of a sibling of `sibling`.
+/// A source `Self` value is always in a nonempty pool, containing at least itself. If a type
+/// implements [`AliasableClone`], then a clone of a value of that type produced via
+/// [`Clone::clone`] or [`Clone::clone_from`] **must** be added to the conceptual pool which the
+/// source value is in (at the time the clone is produced).
 ///
-/// Note in particular that if some `sibling` was forgotten via [`mem::forget`], then even though
-/// the location of the `sibling` itself may be deallocated or otherwise invalidated, it does
-/// count as a sibling clone which has not and will never be dropped (unless, for example, that
-/// `sibling` is unsafely recovered from some raw form and is later dropped).
+/// ## Requirement 2
+///
+/// Applying the three operations listed by [`AliasableView::view`] (moves, [coercions], and any
+/// sound operation on an immutable `&` reference) in any quantity and ordering to a value in the
+/// pool **must not** remove that value from the pool.
+///
+/// Actions with no effect on a value in the pool, including *not* running its destructor
+/// (perhaps after moving it into `Box::leak`), are trivially permitted as no-ops.
+///
+/// Other operations, such as mutating or running the destructor of a value in the pool, *may*
+/// (but are not guaranteed to) remove a value from the conceptual pool.
+///
+/// ## Requirement 3
+///
+/// A value of type [`View<'a, Self>`] obtained from applying [`AliasableView::view`] to some
+/// value of type `Self` in the pool **must** not be invalidated so long as its source pool
+/// is nonempty.
+///
+/// Note that changing the conceptual pool to which the source `Self` value is associated (likely
+/// by mutating it in some way) does not change the pool associated with the previously-produced
+/// view. A new view would be associated with that new pool, but the guaranteed validity of a view
+/// is not solely tied to its original source value under [`AliasableClone`]'s rules.
 ///
 /// ## `AliasableClone + AliasableViewMut`
-/// Note that mutating one sibling clone is not permitted to invalidate views of other siblings
-/// (as that would be unsound, even for entirely safe Rust not making use of the lifetime
-/// transmutes that this trait guarantees are sound). Therefore, types that implement both
-/// [`AliasableClone`] and [`AliasableViewMut`] presumably provide views in a trivial way.
-/// (Perhaps the "mutable views" only contain shared / immutable references, are obtained from
-/// `Box::leak`, or are simply plain-old `Copy + 'static` data, for example). Nevertheless,
-/// implementing both traits can be sound.
+/// For a pool of size at least 2, mutating one value in the pool and obtaining a mutable view
+/// via [`AliasableViewMut`] (possibly reducing the size of the pool to 1) is not permitted to
+/// invalidate the views associated with the pool. (For instance, mutating one `Rc` cannot
+/// invalidate references to the refcounted data while a sibling `Rc` clone exists.)
 ///
+/// However, a valid mutable reference cannot overlap with any other valid references; therefore,
+/// the produced mutable view must not overlap with any of the still-valid immutable views in the
+/// pool, possibly including past immutable views of the same source value.
+///
+/// A type can implement both [`AliasableClone`] and [`AliasableViewMut`] perhaps by having
+/// two entirely different sets of data which are accessed by [`AliasableView`] and
+/// [`AliasableViewMut`], or via operations like [`Rc::get_mut`] and [`Rc::make_mut`] which do not
+/// necessarily separate the data.
+///
+/// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html
 /// [`mem::forget`]: core::mem::forget
-pub unsafe trait AliasableClone: AliasableView + Clone {}
+/// [`Rc`]: https://doc.rust-lang.org/std/rc/struct.Rc.html
+/// [`Arc`]: https://doc.rust-lang.org/std/sync/struct.Arc.html
+/// [`Rc::get_mut`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.get_mut
+/// [`Rc::make_mut`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.make_mut
+pub unsafe trait AliasableClone<Upper: UpperBound>: AliasableView<Upper> + Clone {}
 
 /// A trait for types with a canonical aliasable version (which at least implements
 /// [`AliasableView`]).
@@ -438,6 +483,10 @@ pub unsafe trait AliasableClone: AliasableView + Clone {}
 /// in circumstances where an aliasable type is needed.
 ///
 /// For a type which is *already* aliasable, the canonical aliasable version is itself.
+///
+/// Unfortunately, due to trait coherence concerns, the obvious blanket impl cannot be provided.
+/// (It would conflict with implementations of `IntoAliasable` for the `#[fundamental]` types
+/// `Box<T>` and `&mut T`.)
 pub trait IntoAliasable<Upper: UpperBound = MaxUpperBound> {
     /// The canonical aliasable version of this type.
     type IntoAliasable: AliasableView<Upper>;
@@ -449,15 +498,6 @@ pub trait IntoAliasable<Upper: UpperBound = MaxUpperBound> {
     fn into_aliasable(self) -> Self::IntoAliasable;
 }
 
-impl<T: AliasableView<Upper>, Upper: UpperBound> IntoAliasable<Upper> for T {
-    type IntoAliasable = Self;
-
-    #[inline]
-    fn into_aliasable(self) -> Self::IntoAliasable {
-        self
-    }
-}
-
 /// A trait for types with a canonical aliasable version (which at least implements
 /// [`AliasableView`] and [`AliasableView`]).
 ///
@@ -465,12 +505,10 @@ impl<T: AliasableView<Upper>, Upper: UpperBound> IntoAliasable<Upper> for T {
 /// in circumstances where an aliasable type is needed.
 ///
 /// For a type which is *already* aliasable, the canonical aliasable version is itself.
+///
+/// Unfortunately, due to trait coherence concerns, the obvious blanket impl cannot be provided.
+/// (It would conflict with implementations of `IntoAliasable` for the `#[fundamental]` types
+/// `Box<T>` and `&mut T`.)
 pub trait IntoAliasableMut<Upper: UpperBound = MaxUpperBound>:
     IntoAliasable<Upper, IntoAliasable: AliasableViewMut<Upper>>
-{}
-
-impl<T, Upper> IntoAliasableMut<Upper> for T
-where
-    T: IntoAliasable<Upper, IntoAliasable: AliasableViewMut<Upper>>,
-    Upper: UpperBound,
 {}

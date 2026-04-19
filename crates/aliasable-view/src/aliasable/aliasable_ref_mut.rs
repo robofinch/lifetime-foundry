@@ -1,3 +1,5 @@
+#![expect(unsafe_code, reason = "assert variance and soundness of lifetime extension")]
+
 use core::{cmp::Ordering, marker::PhantomData, pin::Pin, ptr::NonNull};
 use core::{
     fmt::{Debug, Formatter, Result as FmtResult},
@@ -5,9 +7,11 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-// use variance_family::VaryingRef;
+use variance_family::{Unvarying, VaryingRef, VaryingRefMut};
 
-use crate::traits::{AliasableView, AliasableViewMut, View, ViewMut};
+use crate::traits::{
+    AliasableView, AliasableViewMut, IntoAliasable, IntoAliasableMut, View, ViewMut,
+};
 
 
 /// A non-unique version of `&'a mut T` which can be freely moved without invalidating pointers
@@ -137,16 +141,17 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     /// guarantee.
     ///
     /// ### Aliasable view traits
-    /// - [`AliasableView`] only prohibits moves and coercions of `Self` and operations on `&Self`
-    ///   from invalidating pointers or references derived from [`AliasableView::view`] (which
-    ///   converts `self.ptr` into a `&T`); the only methods of `AliasableRefMut` which invalidate
-    ///   such pointers and references are those which convert `self.ptr` to a `&mut T`, and
-    ///   functions which take `&Self` arguments are not permitted to do that.
-    /// - [`AliasableViewMut`] only prohibits moves and coercions of `Self` from invalidating
-    ///   pointers or references derived from [`AliasableViewMut::view_mut`]; moving a `NonNull`
-    ///   does not trigger any problematic exclusive retag, so that condition is fulfilled, and
-    ///   methods of `AliasableRefMut` are freely permitted to invalidate other pointers and
-    ///   references.
+    /// - [`AliasableView`] only prohibits the application of moves, coercions, and immutable
+    ///   operations in any quantity and order to a `Self` value from invalidating pointers or
+    ///   references derived from a call to [`AliasableView::view`] on that `Self` value
+    ///   (which converts `self.ptr` into a `&T`); the only methods of `AliasableRefMut` which
+    ///   invalidate such pointers and references are those which convert `self.ptr` to a `&mut T`,
+    ///   and functions which take `&Self` arguments are not permitted to do that.
+    /// - [`AliasableViewMut`] only prohibits moves and coercions (in any quantity and order) on
+    ///   a `Self` value from invalidating pointers or references derived from a call to
+    ///   [`AliasableViewMut::view_mut`] on that `Self` value; moving a `NonNull` does not trigger
+    ///   any problematic exclusive retag, so that condition is fulfilled, and methods of
+    ///   `AliasableRefMut` are freely permitted to invalidate other pointers and references.
     /// - `AliasableRefMut` does not implement [`AliasableClone`].
     ///
     /// ### Converting `self.ptr` into a reference
@@ -236,6 +241,7 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
 }
 
 impl<'a, T: ?Sized> AliasableRefMut<'a, T> {
+    /// Convert an `&'a mut T` into an aliasable version.
     #[inline]
     #[must_use]
     pub const fn from_mut(ptr: &'a mut T) -> Self {
@@ -249,6 +255,7 @@ impl<'a, T: ?Sized> AliasableRefMut<'a, T> {
         }
     }
 
+    /// Convert an aliasable version of `&'a mut T` back into its source form.
     #[inline]
     #[must_use]
     pub const fn into_mut(mut self) -> &'a mut T {
@@ -257,6 +264,7 @@ impl<'a, T: ?Sized> AliasableRefMut<'a, T> {
         unsafe { self.ptr.as_mut() }
     }
 
+    /// Convert an `Pin<&'a mut T>` into an aliasable version.
     #[inline]
     #[must_use]
     pub const fn from_pin_mut(ptr: Pin<&'a mut T>) -> Pin<Self> {
@@ -279,6 +287,7 @@ impl<'a, T: ?Sized> AliasableRefMut<'a, T> {
         unsafe { Pin::new_unchecked(ptr) }
     }
 
+    /// Convert an aliasable version of `Pin<&'a mut T>` back into its source form.
     #[inline]
     #[must_use]
     pub const fn into_pin_mut(pin: Pin<Self>) -> Pin<&'a mut T> {
@@ -347,33 +356,57 @@ impl<'a, T: ?Sized> From<&'a mut T> for AliasableRefMut<'a, T> {
     }
 }
 
-// // SAFETY: By the aliasing guarantee of `AliasableRefMut` for `&T` references obtained from
-// // `Deref::deref` (among other methods), moving values of `Self`, coercing them, or performing
-// // operations on `&Self` will not invalidate the returned `&T` views. (In fact, `AliasableRefMut`
-// // guarantees that dropping it will not invalidate views, either, which is stronger than the
-// // requirement imposed by `AliasableView`.)
-// unsafe impl<T: ?Sized> AliasableView for AliasableRefMut<'_, T> {
-//     type View = /* &'varying T */ ();
+// SAFETY: By the aliasing guarantee of `AliasableRefMut` for `&T` references obtained from
+// `Deref::deref` (among other methods), performing moves, coercions, or immutable operations
+// in any quantity and order on the source `Self` value will not invalidate the returned `&T` view.
+// (In fact, `AliasableRefMut` guarantees that dropping it will not invalidate views, either,
+// which is stronger than the requirement imposed by `AliasableView`.)
+unsafe impl<'upper, T> AliasableView<&'upper ()> for AliasableRefMut<'_, T>
+where
+    T: ?Sized + 'upper,
+{
+    type View = VaryingRef<Unvarying<T>>;
 
-//     #[inline]
-//     fn view(&self) -> View<'_, Self> {
-//         self
-//     }
-// }
+    #[inline]
+    fn view(&self) -> View<'_, Self, &'upper ()> {
+        self
+    }
+}
 
-// // SAFETY: By the aliasing guarantee of `AliasableRefMut` for `&mut T` references obtained from
-// // `DerefMut::deref_mut` (among other methods), moving or coercing values of `Self` will not
-// // invalidate the returned `&mut T` views. (In fact, `AliasableRefMut` guarantees that dropping it
-// // will not invalidate views, either, which is stronger than the requirement imposed by
-// // `AliasableViewMut`.)
-// unsafe impl<T: ?Sized> AliasableViewMut for AliasableRefMut<'_, T> {
-//     type ViewMut = /* &'varying mut T */ ();
+// SAFETY: By the aliasing guarantee of `AliasableRefMut` for `&mut T` references obtained from
+// `DerefMut::deref_mut` (among other methods), performing moves or coercions (in any quantity
+// and order) on the source `Self` value will not invalidate the returned `&mut T` view.
+// (In fact, `AliasableRefMut` guarantees that dropping it will not invalidate views, either, which
+// is stronger than the requirement imposed by `AliasableViewMut`.)
+unsafe impl<'upper, T> AliasableViewMut<&'upper ()> for AliasableRefMut<'_, T>
+where
+    T: ?Sized + 'upper,
+{
+    type ViewMut = VaryingRefMut<Unvarying<T>>;
 
-//     #[inline]
-//     fn view_mut(&mut self) -> ViewMut<'_, Self> {
-//         self
-//     }
-// }
+    #[inline]
+    fn view_mut(&mut self) -> ViewMut<'_, Self, &'upper ()> {
+        self
+    }
+}
+
+impl<'a, 'upper, T> IntoAliasable<&'upper ()> for &'a mut T
+where
+    'a: 'upper,
+    T: ?Sized + 'a,
+{
+    type IntoAliasable = AliasableRefMut<'a, T>;
+
+    fn into_aliasable(self) -> Self::IntoAliasable {
+        AliasableRefMut::from_mut(self)
+    }
+}
+
+impl<'a, 'upper, T> IntoAliasableMut<&'upper ()> for &'a mut T
+where
+    'a: 'upper,
+    T: ?Sized + 'a,
+{}
 
 // SAFETY: Since `AliasableRefMut<'_, T>` acts like `&mut T`,
 // it can be `Send` if `&mut T` is `Send`. We know that `&mut T` is `Send` iff `T` is `Send`.
