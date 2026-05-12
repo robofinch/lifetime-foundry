@@ -1,6 +1,7 @@
 //! Implementations for:
 //!
 //! - `borrow::Cow`,
+//! - `boxed::Box`,
 //! - `rc::Rc`,
 //! - `string::String`,
 //! - `sync::Arc`,
@@ -13,14 +14,16 @@
 #![warn(clippy::missing_inline_in_public_items, reason = "trivial impls")]
 
 use core::mem::transmute;
-use alloc::{rc::Rc, string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
 use alloc::borrow::{Cow, ToOwned};
 
 use variance_family::{Unvarying, Varying, VaryingRef, VaryingRefMut, WithLifetime};
 
 use crate::{
     traits::{StableClone, StableView, StableViewMut},
-    view_kinds::{PointerViewKind, RecursiveViewKind, SetDefaultView, SetDefaultViewMut},
+    view_kinds::{
+        PointerViewKind, RecursiveViewKind, SetDefaultView, SetDefaultViewMut, UnstableViewKind,
+    },
 };
 
 
@@ -200,6 +203,19 @@ where
         >,
     >,
 {}
+
+
+// ================================================================
+//  `boxed::Box`
+// ================================================================
+
+impl<'a, T: ?Sized + 'a> SetDefaultView<'a, '_> for Box<T> {
+    type Default = UnstableViewKind;
+}
+
+impl<'a, T: ?Sized + 'a> SetDefaultViewMut<'a, '_> for Box<T> {
+    type DefaultMut = UnstableViewKind;
+}
 
 
 // ================================================================

@@ -50,11 +50,13 @@ pub mod __macro {
 }
 
 
+pub use self::aliasable::AliasableRefMut;
 pub use self::{
-    aliasable::AliasableRefMut,
     traits::{CustomView, CustomViewMut, StableClone, StableView, StableViewMut},
     view_kinds::{
         CollectionViewKind, DefaultViewKind, PointerViewKind, RecursiveViewKind, SetDefaultView,
         SetDefaultViewMut, UnstableViewKind, View, ViewMut, ZeroSizedViewKind,
     },
 };
+#[cfg(feature = "alloc")]
+pub use self::aliasable::AliasableBox;

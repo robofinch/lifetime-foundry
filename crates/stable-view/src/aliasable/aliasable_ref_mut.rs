@@ -47,9 +47,9 @@ use crate::{
 /// ### `&mut T`
 /// Any `&mut T` directly obtained from a value of `Self` via methods provided by this crate[^1], as
 /// well as all pointers or references derived from such a `&mut T`, will not be invalidated by
-/// moving that value of `Self`, by dropping it, or by performing coercions (e.g., where
+/// moving that value of `Self`, by dropping it, by performing coercions (e.g., where
 /// `'long: 'short`, an `AliasableRefMut<'long, T>` may be coerced to `AliasableRefMut<'short, T>`
-/// no differently than a move).
+/// no differently than a move), or by performing no-ops on it.
 ///
 /// In particular, calling any methods of `AliasableRefMut` on that value of `Self` (whether owned
 /// or referenced) may invalidate such pointers and references (or allow safe code to later
@@ -58,18 +58,18 @@ use crate::{
 /// also invalidate those pointers and references due to interactions among themselves, as normal.)
 ///
 /// [^1]: This qualifier is intended to exclude pathological third-party implementations and
-///       pathological interpretations of these guarantees. The following lists cannot and are not
-///       intended to be exhaustive.
+///     pathological interpretations of these guarantees. The following lists cannot and are not
+///     intended to be exhaustive.
 ///
-///       Ways to obtain a `&T` to which the first guarantee applies include
-///       `AliasableRefMut`'s [`Deref`], [`AsRef`], and [`StableView::view`] implementations.
-///       Ways to obtain a `&mut T` to which the second guarantee applies include
-///       `AliasableRefMut`'s [`DerefMut`], [`AsMut`], and [`StableViewMut::view_mut`]
-///       implementations.
+///     Ways to obtain a `&T` to which the first guarantee applies include
+///     `AliasableRefMut`'s [`Deref`], [`AsRef`], and [`StableView::view`] implementations.
+///     Ways to obtain a `&mut T` to which the second guarantee applies include
+///     `AliasableRefMut`'s [`DerefMut`], [`AsMut`], and [`StableViewMut::view_mut`]
+///     implementations.
 ///
-///       [`AliasableRefMut::into_mut`] and [`AliasableRefMut::into_pin_mut`] are intentionally not
-///       listed, as they consume a `Self` value, so vacuously that value cannot be later used to
-///       invalidate any pointers or references; the value would already be gone.
+///     [`AliasableRefMut::into_mut`] and [`AliasableRefMut::into_pin_mut`] are intentionally not
+///     listed, as they consume a `Self` value, so vacuously that value cannot be later used to
+///     invalidate any pointers or references; the value would already be gone.
 ///
 /// # Layout
 /// This type is a transparent wrapper around a `NonNull<T>` and may be used in FFI (depending on
@@ -82,10 +82,10 @@ use crate::{
 #[repr(transparent)]
 pub struct AliasableRefMut<'a, T: ?Sized> {
     /// # Safety invariant
-    /// This pointer can always be converted (possibly unsoundly, due to this type's aliasing
-    /// guarantees) into a valid `&'c T` or `&'c mut T` where `'a: 'c`. This would come at the
-    /// expense of invalidating some pointers and references previously derived from `self.ptr`
-    /// (or, allow such pointers to be invalidated by safe code using the `&'c T` or `&'c mut T`).
+    /// This pointer can generally be converted into a valid `&'c T` or `&'c mut T` where `'a: 'c`.
+    /// This comes at the expense of invalidating some pointers and references previously derived
+    /// from `self.ptr` (or, allow such pointers to be invalidated by safe code using the `&'c T`
+    /// or `&'c mut T`).
     ///
     /// Therefore, methods of this type converting `self.ptr` into a (possibly mutable) reference
     /// must uphold the aliasing guarantees of this type by ensuring the following:
@@ -109,8 +109,8 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     ///   pointer and whatnot.)
     ///
     /// In particular, methods taking `&mut Self` or `Self` which directly manipulate `self.ptr`
-    /// should check the first invariant; methods taking `&Self` which directly manipulate
-    /// `self.ptr` should check the second invariant; `into_pin_mut` does its own thing; and no
+    /// should cite the first invariant; methods taking `&Self` which directly manipulate
+    /// `self.ptr` should cite the second invariant; `into_pin_mut` does its own thing; and no
     /// method should do anything listed in the last four bullet points, but there's no need to
     /// repeat those conditions everywhere.
     ///
@@ -142,10 +142,10 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     /// write through `self.ptr` (or references derived from it) without violating the aliasing
     /// guarantee.
     ///
-    /// ### Aliasable view traits
-    /// - [`AliasableView`] only prohibits the application of moves, coercions, and immutable
+    /// ### Stable view traits
+    /// - [`StableView`] only prohibits the application of moves, coercions, and immutable
     ///   operations in any quantity and order to a `Self` value from invalidating pointers or
-    ///   references derived from a call to [`AliasableView::view`] on that `Self` value
+    ///   references derived from a call to [`StableView::view`] on that `Self` value
     ///   (which converts `self.ptr` into a `&T`), and permits the view to be invalidated once
     ///   lifetime parameters of the implementing type expire.
     ///
@@ -153,16 +153,16 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     ///   those which convert `self.ptr` to a `&mut T`, and functions which take `&Self` arguments
     ///   are not permitted to do that. Once lifetime `'a` expires, references to the pointee
     ///   of `self.ptr` might be invalidated through other means, which is fine.
-    /// - [`AliasableViewMut`] only prohibits moves and coercions (in any quantity and order) on
-    ///   a `Self` value from invalidating pointers or references derived from a call to
-    ///   [`AliasableViewMut::view_mut`] on that `Self` value, and permits the view to be
+    /// - [`StableViewMut`] only prohibits moves, coercions, and no-ops (in any quantity and order)
+    ///   on a `Self` value from invalidating pointers or references derived from a call to
+    ///   [`StableViewMut::view_mut`] on that `Self` value, and permits the view to be
     ///   invalidated once lifetime parameters of the implementing type expire.
     ///
     ///   Moving a `NonNull` does not trigger any problematic exclusive retag, so that condition is
     ///   fulfilled, and methods of `AliasableRefMut` are freely permitted to invalidate other
     ///   pointers and references. Once lifetime `'a` expires, references to the pointee
     ///   of `self.ptr` might be invalidated through other means, which is fine.
-    /// - `AliasableRefMut` does not implement [`AliasableClone`].
+    /// - `AliasableRefMut` does not implement [`StableClone`].
     ///
     /// ### Converting `self.ptr` into a reference
     /// - It's always properly aligned; none of `AliasableRefMut`'s `&mut` methods mutate the
@@ -179,11 +179,11 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     ///   pointers and references are derived from `self.ptr` OR moved-to or moved-from versions of
     ///   `self.ptr`, that is, sibling pointers of `self.ptr` (noting that while moving a `Box` or
     ///   `&mut` could result in problematic retags, moving the raw pointer contained in `NonNull`
-    ///   is fine). (In particular, under stacked borrows, all the siblings of `self.ptr` should
-    ///   have `SharedReadWrite` permissions. I'm not sure if the raw pointers are retagged when
-    ///   moved, or if they all use the same tag, but that shouldn't matter.) Therefore, assuming
-    ///   that the code of users of this type is UB-free, the provenance of `self.ptr` should not
-    ///   be invalidated, so it would remain dereferenceable.
+    ///   is fine). (In particular, under stacked borrows, all the siblings of `self.ptr` have
+    ///   compatible `SharedReadWrite` permissions. Under tree borrows, all the siblings have
+    ///   identical permissions and are considered to be at the same node of the tree.) Therefore,
+    ///   assuming that the code of users of this type is UB-free, the provenance of `self.ptr`
+    ///   should not be invalidated, so it would remain dereferenceable.
     /// - It points to a valid value of type `T`, since we are invariant over `T` and we only
     ///   expose ways to write (or read) values of type `T` to the pointee (note that invariance
     ///   prevents a supertype value from being written to the pointee of a more-restrictive subtype
@@ -245,7 +245,7 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     ///     previously existing or constructed while the returned reference is live) will access
     ///     (or assert exclusive permissions over) the pointee of the returned reference's pointee.
     ///
-    /// [`AliasableClone`]: crate::traits::AliasableClone
+    /// [`StableClone`]: crate::traits::StableClone
     ptr:       NonNull<T>,
     _variance: PhantomData<&'a mut T>,
 }
@@ -366,6 +366,13 @@ impl<'a, T: ?Sized> From<&'a mut T> for AliasableRefMut<'a, T> {
     }
 }
 
+impl<'a, T: ?Sized> From<Pin<&'a mut T>> for Pin<AliasableRefMut<'a, T>> {
+    #[inline]
+    fn from(ptr: Pin<&'a mut T>) -> Self {
+        AliasableRefMut::from_pin_mut(ptr)
+    }
+}
+
 // SAFETY: By the aliasing guarantee of `AliasableRefMut` for `&T` references obtained from
 // `Deref::deref` (among other methods), performing moves, coercions, or immutable operations
 // in any quantity and order on the source `Self` value will not invalidate the returned `&T` view.
@@ -387,15 +394,7 @@ where
     {
         let stable_eq_a: &'a T = data;
 
-        // SAFETY: See the safety comment of the above `unsafe` trait impl.
-        // The caller of `view` unsafely asserts that the returned view is only used when the source
-        // data has only been moved, coerced, or immutably operated on (in any quantity and order)
-        // from just after this function returns (and, therefore, also starting from now, since we
-        // have a `&` borrow of the source data) until the time of use, and that `'other_data` has
-        // not ended when it's used. By the same reasoning that enables the `unsafe` trait impl, we
-        // know that those uses do not invalidate `'stable` data and that lifetime extension of the
-        // `'stable` lifetime parameter is sound. Any further soundness concerns are the
-        // responsibility of the caller of `view`.
+        // SAFETY: See the "`transmute` in `view` Implementation" section of the `StableView` docs.
         unsafe {
             transmute::<
                 &'a T,
@@ -421,7 +420,7 @@ where
 unsafe impl<'a, 'b, 'other_data, T> StableViewMut<'a, 'other_data, AliasableRefMut<'b, T>>
 for PointerViewKind
 where
-    T: ?Sized + 'b + 'other_data,
+    T: ?Sized + 'b,
     'b: 'other_data,
 {
     type ViewMut = VaryingRefMut<Unvarying<T>>;
@@ -434,15 +433,8 @@ where
     {
         let stable_eq_a: &'a mut T = data;
 
-        // SAFETY: See the safety comment of the above `unsafe` trait impl.
-        // The caller of `view_mut` unsafely asserts that the returned view is only used when the
-        // source data has only been moved or coerced (or had no-ops occur) from just after this
-        // function returns (and, therefore, also starting from now, since we have a `&mut` borrow
-        // of the source data) until the time of use, and that `'other_data` has not ended when it's
-        // used. By the same reasoning that enables the `unsafe` trait impl, we know that those uses
-        // do not invalidate `'stable` data and that lifetime extension of the `'stable` lifetime
-        // parameter is sound. Any further soundness concerns are the responsibility of the caller
-        // of `view_mut`.
+        // SAFETY: See the "`transmute` in `view_mut` Implementation" section of the
+        // `StableViewMut` docs.
         unsafe {
             transmute::<
                 &'a mut T,

@@ -3,6 +3,7 @@
 //! - `[T; N]`,
 //! - `(T1, ..., Tn)` of arities 0-6,
 //! - `&T`,
+//! - `&mut T`,
 //! - `cell::{Ref, RefMut}`,
 //! - `convert::Infallible`,
 //! - `option::Option`,
@@ -24,7 +25,9 @@ use variance_family::{Unvarying, VaryingRef, VaryingRefMut};
 use crate::recursive_view;
 use crate::{
     traits::{StableClone, StableView, StableViewMut},
-    view_kinds::{PointerViewKind, SetDefaultView, SetDefaultViewMut, ZeroSizedViewKind},
+    view_kinds::{
+        PointerViewKind, SetDefaultView, SetDefaultViewMut, UnstableViewKind, ZeroSizedViewKind,
+    },
 };
 
 
@@ -296,6 +299,27 @@ where
     'b: 'other_data,
     T: ?Sized + 'b,
 {}
+
+
+// ================================================================
+//  `&mut T`
+// ================================================================
+
+impl<'a, 'b, T> SetDefaultView<'a, '_> for &'b mut T
+where
+    'b: 'a,
+    T: ?Sized + 'b,
+{
+    type Default = UnstableViewKind;
+}
+
+impl<'a, 'b, T> SetDefaultViewMut<'a, '_> for &'b mut T
+where
+    'b: 'a,
+    T: ?Sized + 'b,
+{
+    type DefaultMut = UnstableViewKind;
+}
 
 
 // ================================================================

@@ -2,6 +2,7 @@
 // for 4-5 years and has substantial UB. No clue why the changes on its repo haven't been pushed.
 
 mod aliasable_ref_mut;
+#[cfg(feature = "alloc")]
 mod aliasable_box;
 
 // Currently, `Vec` and friends are already aliasable. If that ever changes for whatever reason,
@@ -9,3 +10,5 @@ mod aliasable_box;
 // and create `AliasableVec`, `AliasableString`, `AliasableCowSlice`, etc.
 
 pub use self::aliasable_ref_mut::AliasableRefMut;
+#[cfg(feature = "alloc")]
+pub use self::aliasable_box::AliasableBox;
