@@ -2,6 +2,7 @@
 
 #![expect(unsafe_code, reason = "allow unsafe code to rely on impls of lifetime family traits")]
 
+
 // ================================================================
 //  Support
 // ================================================================
@@ -165,6 +166,7 @@ pub type RawVarying<'varying, 'lower, Upper, T> = *const *const Varying<'varying
 
 /// A type which cannot coerce to any other type and is invariant over `T<'varying>`.
 pub type RawMutVarying<'varying, 'lower, Upper, T> = *mut *mut Varying<'varying, 'lower, Upper, T>;
+
 
 // ================================================================
 //  Lifetime Family traits

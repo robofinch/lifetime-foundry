@@ -1,6 +1,6 @@
 //! Implementations of [`variance_family`] traits for the aliasable versions of `&'a mut T`,
 //! `&'varying mut T`, and `Box<T>`.
-//
+
 // Currently, even though the macros emit `unsafe` tokens -- regardless of whether they're passed
 // from the macros' callers (I tried) -- the lint is not triggered. I don't know exactly why, since
 // the lints work within the `variance-family` crate.
@@ -15,12 +15,21 @@ use super::aliasable_ref_mut::AliasableRefMut;
 use super::aliasable_box::AliasableBox;
 
 
+// ================================================================
+//  `AliasableRefMut<'a, T<'varying>>`
+// ================================================================
+
 generic_wrapper! {
     impl<{'a, #[unvarying] T (Is: 'a)}> ([Co] + [Contra])variantFamily<'_, _>
     // SAFETY: `AliasableRefMut` is defined in this crate.
     for #[unsafe(not_a_foreign_fundamental_type)] AliasableRefMut<..>
     where {T: ?Sized}
 }
+
+
+// ================================================================
+//  `AliasableRefMut<'varying, T<'varying>>`
+// ================================================================
 
 /// The `AliasableRefMut<'varying, T<'varying>>` lifetime family.
 ///
@@ -52,6 +61,11 @@ varying_ref_mut_wrapper! {
     as AliasableRefMut<'_, #[unvarying] T>
     where {T: ?Sized}
 }
+
+
+// ================================================================
+//  `AliasableBox<T<'varying>>`
+// ================================================================
 
 #[cfg(feature = "alloc")]
 generic_wrapper! {

@@ -32,7 +32,7 @@ use crate::{
 
 
 // TODO: If there's any demand, consider making helper types for implementing
-// `RecursiveViewKind` for `StableView<'_, '_, [T]>`.
+// `StableView<'_, '_, [T]>` for `RecursiveViewKind`.
 
 // ================================================================
 //  `[T; N]`

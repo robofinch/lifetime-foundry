@@ -1,4 +1,5 @@
 //! The core interface of this crate.
+
 #![expect(unsafe_code, reason = "Allow `unsafe` code to rely on implementations being correct")]
 
 use variance_family::{CovariantFamily, Varying};

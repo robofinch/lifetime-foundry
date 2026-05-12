@@ -1,4 +1,5 @@
 //! Vocabulary types for convenient usage of this crate.
+
 #![expect(unsafe_code, reason = "defer to other unsafe impls, and a trivial unsafe impl")]
 
 use core::marker::PhantomData;

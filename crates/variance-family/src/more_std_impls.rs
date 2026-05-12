@@ -4,7 +4,6 @@
 //! - `io::Cursor`,
 //! - `sync::{OnceLock, RwLock, RwLock{Read, Write}Guard, LazyLock}`.
 
-
 #![expect(unsafe_code, reason = "assert variance and permission to impl traits for `stc` types")]
 
 use core::marker::PhantomData;

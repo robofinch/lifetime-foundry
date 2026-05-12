@@ -4,6 +4,7 @@
 //!
 //! [`recursive_view`]: crate::recursive_view
 //! [`RecursiveViewKind`]: crate::view_kinds::RecursiveViewKind
+
 #![expect(
     unsafe_code,
     reason = "create a simpler set of `unsafe` requirements for implementing other unsafe traits",

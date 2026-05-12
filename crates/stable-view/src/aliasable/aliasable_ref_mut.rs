@@ -1,6 +1,7 @@
 //! Aliasable version of `&mut T` which doesn't invalidate pointers to its pointee when moved.
 //!
 //! That is, this type allows its pointee to be aliased.
+
 #![expect(unsafe_code, reason = "assert variance and soundness of lifetime extension")]
 
 use core::{cmp::Ordering, marker::PhantomData, mem::transmute, pin::Pin, ptr::NonNull};
