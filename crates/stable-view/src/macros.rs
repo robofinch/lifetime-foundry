@@ -4,8 +4,6 @@
 )]
 
 
-// TODO: document below `unsafe`
-
 /// Utility for implementing [`StableView`], [`StableViewMut`], and [`StableClone`]
 /// for [`RecursiveViewKind`] in cases similar to `Option<T>`, `Box<T>`, `[T; N]`, or
 /// `(T1, .., Tn)`.
@@ -307,8 +305,8 @@ macro_rules! recursive_view {
             // mutability.)
             //
             // Thus, moves, coercions, and immutable operations (in any quantity and order) on
-            // `data` do not invalidate the value returned by `data.view()`, so this
-            // implementation is sound.
+            // `data` do not invalidate the value returned by `data.view()`, and since we
+            // also enforce the `'other_data` upper bound, this implementation is sound.
             unsafe impl<
                 'a, 'other_data,
                 $(
@@ -363,7 +361,17 @@ macro_rules! recursive_view {
                         clippy::useless_transmute,
                         reason = "if `'stable` is unused, this is a no-op",
                     )]
-                    // SAFETY: TODO
+                    // SAFETY: See the safety comment of the above `unsafe` trait impl.
+                    // The caller of `view` unsafely asserts that the returned view
+                    // is only used when the source data has only been moved, coerced, or
+                    // immutably operated on (in any quantity and order) from just after this
+                    // function returns (and, therefore, also starting from now, since we
+                    // have a `&` borrow of the source data) until the time of use, and that
+                    // `'other_data` has not ended when it's used. By the same reasoning that
+                    // enables the `unsafe` trait impl, we know that those uses do not invalidate
+                    // `'stable` data and that lifetime extension of the `'stable` lifetime
+                    // parameter is sound. Any further soundness concerns are the responsibility of
+                    // the caller of `view`.
                     unsafe {
                         ::core::mem::transmute::<
                             $crate::CustomView<
@@ -380,18 +388,20 @@ macro_rules! recursive_view {
             }
 
             // SAFETY:
-            // Moves or coercions (in any quantity and order) of `data` cannot invalidate any
-            // `'static` data, so we need only care about the potentially non-`'static` data in
-            // `data.view_mut()`, which come solely from view components produced from calling
-            // `.view_mut()` on view components of `data`.
+            // Moves, non-deref coercions (in any quantity and order), or no-ops of `data` cannot
+            // invalidate any `'static` data, so we need only care about the potentially
+            // non-`'static` data in `data.view_mut()`, which come solely from view components
+            // produced from calling `.view_mut()` on view components of `data`.
             // (This fact is a mixture of reasoning about the below impl and about the safety
             // requirements of this macro.)
-            // Moving (or coercing) `data` (in any quantity and order) can move (or coerce) its
-            // view components, but since they are here required to implement `StableViewMut`
-            // (and since code injection is prevented), that does not invalidate their views.
+            // Moving (or coercing, or performing no-ops on) `data` (in any quantity and order) can
+            // move (or coerce, or perform no-ops on) its view components, but since they are here
+            // required to implement `StableViewMut` (and since code injection is prevented), that
+            // does not invalidate their views.
             //
-            // Thus, moving or coercing `data` (in any quantity and order) does not
-            // invalidate the value returned by `data.view_mut()`, so this implementation is sound.
+            // Thus, moving, coercing, or performing no-ops on `data` (in any quantity and order)
+            // does not invalidate the value returned by `data.view_mut()`, and since we
+            // also enforce the `'other_data` upper bound, this implementation is sound.
             unsafe impl<
                 'a, 'other_data,
                 $(
@@ -452,7 +462,16 @@ macro_rules! recursive_view {
                         clippy::useless_transmute,
                         reason = "if `'stable` is unused, this is a no-op",
                     )]
-                    // SAFETY: TODO
+                    // SAFETY: See the safety comment of the above `unsafe` trait impl.
+                    // The caller of `view_mut` unsafely asserts that the returned view
+                    // is only used when the source data has only been moved or coerced (or had
+                    // no-ops occur) from just after this function returns (and, therefore, also
+                    // starting from now, since we have a `&mut` borrow of the source data) until
+                    // the time of use, and that `'other_data` has not ended when it's used. By the
+                    // same reasoning that enables the `unsafe` trait impl, we know that those uses
+                    // do not invalidate `'stable` data and that lifetime extension of the
+                    // `'stable` lifetime parameter is sound. Any further soundness concerns are
+                    // the responsibility of the caller of `view_mut`.
                     unsafe {
                         ::core::mem::transmute::<
                             $crate::CustomViewMut<

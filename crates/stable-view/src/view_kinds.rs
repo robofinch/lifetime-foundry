@@ -1,7 +1,5 @@
 #![expect(unsafe_code, reason = "defer to other unsafe impls, and a trivial unsafe impl")]
 
-#![expect(clippy::undocumented_unsafe_blocks, reason = "TODO")]
-
 use core::marker::PhantomData;
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
@@ -19,7 +17,8 @@ use crate::traits::{CustomView, CustomViewMut, StableClone, StableView, StableVi
 ///
 /// If `Data` implements [`SetDefaultView`], then for the purposes of [`StableClone`], the
 /// definition of conceptual pools associated with this view kind and `Data` is the definition of
-/// conceptual pools used by <code><Data as [SetDefaultView]>::[Default]></code>.
+/// conceptual pools used by <code><Data as [SetDefaultView]>::[Default]></code> (if the latter
+/// implements [`StableClone`]).
 ///
 /// [Default]: SetDefaultView::Default
 #[derive(Debug, Default, Clone, Copy)]
@@ -45,6 +44,11 @@ pub trait SetDefaultViewMut<'a, 'other_data>: SetDefaultView<'a, 'other_data> {
     type DefaultMut: StableViewMut<'a, 'other_data, Self>;
 }
 
+// SAFETY: Since `Data::Default: StableView<'a, 'other_data, Data>`, we know that the
+// `'stable` data in the view returned by `Data::Default::view(data)` is not invalidated by
+// the three operations applied to `data` (up to the `'other_data` upper bound). Our `view` impl
+// simply defers to that implementation, so our views are not invalidated by the three operations
+// (and we have the same `'other_data` upper bound).
 unsafe impl<'a, 'other_data, Data> StableView<'a, 'other_data, Data>
 for DefaultViewKind
 where
@@ -54,10 +58,20 @@ where
 
     #[inline]
     unsafe fn view<'stable>(data: &'a Data) -> CustomView<'a, 'stable, 'other_data, Data, Self> {
+        // SAFETY: The returned view can only be used at a given time if, from just after this
+        // function returns until the time of use, only the three operations are performed,
+        // and if `'other_data` has not ended.
+        // This constraint is precisely what *our* `view` caller unsafely asserts, so this is sound.
+        // In other words, we have simply forwarded the safety preconditions to the caller.
         unsafe { Data::Default::view(data) }
     }
 }
 
+// SAFETY: Since `Data::DefaultMut: StableViewMut<'a, 'other_data, Data>`, we know that the
+// `'stable` data in the view returned by `Data::DefaultMut::view_mut(data)` is not invalidated by
+// the three operations applied to `data` (up to the `'other_data` upper bound). Our `view_mut` impl
+// simply defers to that implementation, so our views are not invalidated by the three operations
+// (and we have the same `'other_data` upper bound).
 unsafe impl<'a, 'other_data, Data> StableViewMut<'a, 'other_data, Data>
 for DefaultViewKind
 where
@@ -69,14 +83,31 @@ where
     unsafe fn view_mut<'stable>(
         data: &'a mut Data,
     ) -> CustomViewMut<'a, 'stable, 'other_data, Data, Self> {
+        // SAFETY: The returned view can only be used at a given time if, from just after this
+        // function returns until the time of use, only the three operations are performed,
+        // and if `'other_data` has not ended.
+        // This constraint is precisely what *our* `view_mut` caller unsafely asserts, so this is
+        // sound. In other words, we have simply forwarded the safety preconditions to the caller.
         unsafe { Data::DefaultMut::view_mut(data) }
     }
 }
 
+// SAFETY: Since our conceptual pool definition defers to a different `StableClone` impl, the first
+// two requirements of the definition must be met. Since our `view` impl *also* defers to that
+// same `StableClone` impl's `view` function, the third requirement must also be met.
+//
+/// # Robust Guarantee
+///
+/// If `Data` implements [`SetDefaultView`], then for the purposes of [`StableClone`], the
+/// definition of conceptual pools associated with this view kind and `Data` is the definition of
+/// conceptual pools used by <code><Data as [SetDefaultView]>::[Default]></code> (if the latter
+/// implements [`StableClone`]).
+///
+/// [Default]: SetDefaultView::Default
 unsafe impl<'a, 'other_data, Data> StableClone<'a, 'other_data, Data>
 for DefaultViewKind
 where
-    Data: Clone + SetDefaultView<'a, 'other_data>
+    Data: Clone + SetDefaultView<'a, 'other_data, Default: StableClone<'a, 'other_data, Data>>
 {}
 
 /// A trivial view kind (or mutable view kind) whose returned views have no `'stable` references.

@@ -63,8 +63,10 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 /// - [coercions] (which may or may not involve moves, and may read arbitrary data thanks to
 ///   user-defined deref coercions),
 /// - any (sound) operations which use data derived from the source `Data` value only through
-///   shared/immutable `&` references. (These could be called "immutable operations" on the source
-///   `Data` value, if not for internal mutability.)
+///   shared/immutable `&` references to the relevant parts of `Data`. (These could be called
+///   "immutable operations" on the source `Data` value, if not for internal mutability within
+///   `Data`, which could escalate a `&` reference to part of `Data` to a `&mut` reference
+///   to another part of `Data`.)
 ///
 /// ## Elaboration
 ///
@@ -142,7 +144,7 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 ///
 /// Extending `'stable` to a fake lifetime like `'static` may be sound if you are careful to expose
 /// that view only to code aware that the lifetime annotation is a lie; in that case, the view
-/// should only be accessed when it can be proven that the view was not invalidated.
+/// must only be accessed when it can be proven that the view was not invalidated.
 ///
 /// Note that the `view` function itself may need to perform a lifetime transmute to the `'stable`
 /// lifetime, thus why it is `unsafe` and requires that these rules of sound usage be manually
@@ -327,7 +329,7 @@ pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
     /// Get a temporary (but somewhat stable) view of this type.
     ///
     /// # Safety
-    /// The returned view should only be used under the conditions described by the below robust
+    /// The returned view must only be used under the conditions described by the below robust
     /// guarantee. Any lifetime can be used for `'stable` between `'a` and `'other_data`, but
     /// if `'stable` is chosen to be too long, then exposing the view to arbitrary safe Rust code
     /// could cause undefined behavior.
@@ -349,8 +351,10 @@ pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
     /// - moves,
     /// - [coercions] that may or may not involve moves,
     /// - any (sound) operations which use data derived from the source `Data` value only through
-    ///   shared/immutable `&` references. (These could be called "immutable operations" on the
-    ///   source `Data` value, if not for internal mutability.)
+    ///   shared/immutable `&` references to the relevant parts of `Data`. (These could be called
+    ///   "immutable operations" on the source `Data` value, if not for internal mutability within
+    ///   `Data`, which could escalate a `&` reference to part of `Data` to a `&mut` reference
+    ///   to another part of `Data`.)
     ///
     /// See the [trait-level documentation] for more about how returned views may be used, including
     /// **vital** warnings.
@@ -400,7 +404,8 @@ pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
 /// included for the sake of caution.
 ///
 /// The third operation category notably includes *not* running the `Data` value's destructor
-/// (perhaps after moving it into `Box::leak`).
+/// (perhaps after moving it into `Box::leak`). The third category is trivial, but it is included
+/// to explicitly grant users that right.
 ///
 /// # Implications of Safety Requirements for Users
 /// Refer to the relevant section of [`StableView`]'s documentation. The only differing details are
@@ -418,7 +423,8 @@ pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
 /// `Data = Rc<T>` to `Rc<dyn Trait>`, only read data inline in `Data`; they cannot read something
 /// in `Data` and invalidate a `&'stable mut U` reference. Therefore, when implementing this trait,
 /// you need only worry about the first and third operations, in addition to the details
-/// of [`StableView`].
+/// of [`StableView`]. The soundness of the third operation, of course, is trivial, leaving only
+/// the first operation for serious consideration.
 ///
 /// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html
 pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'other_data, Data> {
@@ -428,7 +434,7 @@ pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'o
     /// Get a temporary (but somewhat stable) mutable view of this type.
     ///
     /// # Safety
-    /// The returned mutable view should only be used under the conditions described by the below
+    /// The returned mutable view must only be used under the conditions described by the below
     /// robust guarantee. Any lifetime can be used for `'stable` between `'a` and `'other_data`, but
     /// if `'stable` is chosen to be too long, then exposing the view to arbitrary safe Rust code
     /// could cause undefined behavior.
