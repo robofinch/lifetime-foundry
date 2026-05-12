@@ -61,6 +61,7 @@ generic_wrapper! {
 //  (T1, .., Tn)    (for argument arities 1..=12)
 // ================================================================
 
+/// Utility for reducing repetition. Calling this macro should be entirely safe.
 macro_rules! tuple_family {
     ($Tlast:ident $(,)? $($Ti:ident),*) => {
         const _: () = {

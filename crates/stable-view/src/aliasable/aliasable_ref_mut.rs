@@ -1,3 +1,6 @@
+//! Aliasable version of `&mut T` which doesn't invalidate pointers to its pointee when moved.
+//!
+//! That is, this type allows its pointee to be aliased.
 #![expect(unsafe_code, reason = "assert variance and soundness of lifetime extension")]
 
 use core::{cmp::Ordering, marker::PhantomData, mem::transmute, pin::Pin, ptr::NonNull};
@@ -247,6 +250,7 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     ///
     /// [`StableClone`]: crate::traits::StableClone
     ptr:       NonNull<T>,
+    /// Enforce invariance over `T` (and imply a `T: 'a` well-formedness bound).
     _variance: PhantomData<&'a mut T>,
 }
 

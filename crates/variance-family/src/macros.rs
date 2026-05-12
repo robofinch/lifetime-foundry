@@ -101,7 +101,9 @@
 ///
 /// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
 /// its `unsafe impl`s are mostly encapsulated, but calls an `unsafe` function to denote the
-/// remaining `unsafe` assertion.
+/// remaining `unsafe` assertion. Currently, the `unsafe_code` and
+/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
+/// will reliably work with hits macro.
 ///
 /// [`WithLifetime`]: crate::traits::WithLifetime
 #[macro_export]
@@ -127,7 +129,9 @@ macro_rules! covariant {
 ///
 /// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
 /// its `unsafe impl`s are mostly encapsulated, but calls an `unsafe` function to denote the
-/// remaining `unsafe` assertion.
+/// remaining `unsafe` assertion. Currently, the `unsafe_code` and
+/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
+/// will reliably work with hits macro.
 #[macro_export]
 macro_rules! contravariant {
     {$($body:tt)*} => {
@@ -184,7 +188,9 @@ macro_rules! contravariant {
 ///
 /// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
 /// its `unsafe impl`s are mostly encapsulated, but calls an `unsafe` function to denote the
-/// remaining `unsafe` assertion.
+/// remaining `unsafe` assertion. Currently, the `unsafe_code` and
+/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
+/// will reliably work with hits macro.
 #[macro_export]
 macro_rules! unvarying {
     {
@@ -375,7 +381,9 @@ pub(crate) use concrete_types;
 ///
 /// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
 /// its `unsafe impl`s are mostly encapsulated, but calls `unsafe` functions to denote the
-/// remaining `unsafe` assertions.
+/// remaining `unsafe` assertions. Currently, the `unsafe_code` and
+/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
+/// will reliably work with hits macro.
 ///
 /// ## `unsafe(covariant)` and `unsafe(contravariant)`
 /// The varying type **must** be covariant over parameters marked with `unsafe(covariant)` and must
@@ -510,7 +518,9 @@ macro_rules! generic_wrapper {
 /// # Safety
 /// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
 /// its `unsafe impl`s are mostly encapsulated, but calls `unsafe` functions to denote the
-/// remaining `unsafe` assertions.
+/// remaining `unsafe` assertions. Currently, the `unsafe_code` and
+/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
+/// will reliably work with hits macro.
 ///
 /// ## `unsafe(covariant)`
 /// The varying type **must** be covariant over its parameter marked with `unsafe(covariant)`.
@@ -589,7 +599,9 @@ macro_rules! varying_ref_wrapper {
 ///
 /// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
 /// its `unsafe impl`s are mostly encapsulated, but calls an `unsafe` function to denote the
-/// remaining `unsafe` assertion.
+/// remaining `unsafe` assertion. Currently, the `unsafe_code` and
+/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
+/// will reliably work with hits macro.
 #[macro_export]
 macro_rules! varying_ref_mut_wrapper {
     {
@@ -601,8 +613,6 @@ macro_rules! varying_ref_mut_wrapper {
         >
         $(where {$($where_bounds:tt)*})?
     } => {
-        // SAFETY: Asserted by user of this macro.
-        const _: () = unsafe { $crate::assert_variance() };
         // SAFETY: Asserted by user of this macro.
         const _: () = unsafe { $crate::assert_not_a_foreign_fundamental_type() };
 

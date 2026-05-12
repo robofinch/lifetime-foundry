@@ -1,3 +1,8 @@
+//! A [`recursive_view`] macro for reducing the safety requirements of this crate's three
+//! `unsafe` traits to a simpler list of requirements, applicable to common sorts of
+//! [`RecursiveViewKind`] implementations.
+//!
+//! [`RecursiveViewKind`]: crate::view_kinds::RecursiveViewKind
 #![expect(
     unsafe_code,
     reason = "create a simpler set of `unsafe` requirements for implementing other unsafe traits",

@@ -50,8 +50,8 @@ pub mod __macro {
 }
 
 
-pub use self::aliasable::AliasableRefMut;
 pub use self::{
+    aliasable::{AliasableRefMut, VaryingAliasableRefMut},
     traits::{CustomView, CustomViewMut, StableClone, StableView, StableViewMut},
     view_kinds::{
         CollectionViewKind, DefaultViewKind, PointerViewKind, RecursiveViewKind, SetDefaultView,

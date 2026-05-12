@@ -1,3 +1,6 @@
+//! Aliasable version of `Box<T>` which doesn't invalidate pointers to its pointee when moved.
+//!
+//! That is, this type allows its pointee to be aliased.
 #![expect(unsafe_code, reason = "assert variance and soundness of lifetime extension")]
 
 use core::{cmp::Ordering, mem::transmute, pin::Pin, ptr::NonNull};
@@ -263,7 +266,7 @@ impl<T: ?Sized> AliasableBox<T> {
     /// Convert a `Box<T>` into an aliasable version.
     #[inline]
     #[must_use]
-    pub const fn from_box(boxed: Box<T>) -> Self {
+    pub fn from_box(boxed: Box<T>) -> Self {
         let ptr = Box::into_raw(boxed);
         // SAFETY: `Box::into_raw` guarantees that its return value is non-null.
         let ptr = unsafe { NonNull::new_unchecked(ptr) };
@@ -275,7 +278,7 @@ impl<T: ?Sized> AliasableBox<T> {
     /// Convert an aliasable version of `Box<T>` back into its source form.
     #[inline]
     #[must_use]
-    pub const fn into_box(self) -> Box<T> {
+    pub fn into_box(self) -> Box<T> {
         // SAFETY: this is a method of `AliasableBox` with a `Self` argument which directly
         // manipulates `self.ptr`, so as per the first safety invariant of `self.ptr`, we can (and
         // must) consume `self.ptr` into a `Box<T>` with `Box::from_raw`.
@@ -285,7 +288,7 @@ impl<T: ?Sized> AliasableBox<T> {
     /// Convert an `Pin<Box<T>>` into an aliasable version.
     #[inline]
     #[must_use]
-    pub const fn from_pin_box(pin: Pin<Box<T>>) -> Pin<Self> {
+    pub fn from_pin_box(pin: Pin<Box<T>>) -> Pin<Self> {
         // SAFETY: we do not move out of the returned `Box<T>` in this function or in
         // `Self::from_box`, and the returned value is pinned (so by the pinning invariant, if
         // `T: !Unpin`, we never move out of this reference or otherwise invalidate the pointee
@@ -307,7 +310,7 @@ impl<T: ?Sized> AliasableBox<T> {
     /// Convert an aliasable version of `Pin<Box<T>>` back into its source form.
     #[inline]
     #[must_use]
-    pub const fn into_pin_box(pin: Pin<Self>) -> Pin<Box<T>> {
+    pub fn into_pin_box(pin: Pin<Self>) -> Pin<Box<T>> {
         // SAFETY: we treat `boxed` as pinned, namely, we do not move or overwrite (or otherwise
         // invalidate) its pointee in this function or in `Self::into_box`, and the returned
         // value is pinned (so by the pinning invariant, if `T: !Unpin`, we never move out of

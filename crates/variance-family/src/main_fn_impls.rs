@@ -7,6 +7,7 @@
 //  fn(T1, .., Tn) -> R    (for argument arities 0..=12)
 // ================================================================
 
+/// Utility for reducing repetition. Calling this macro should be entirely safe.
 macro_rules! fn_family {
     (fn($($Ti:ident),*) -> $R:ident) => {
         const _: () = {

@@ -38,6 +38,7 @@ use crate::{
 //  `[T; N]`
 // ================================================================
 
+/// Get `[T; N]` into a shape usable with [`recursive_view`].
 type Array<const N: usize, T> = [T; N];
 
 recursive_view! {
@@ -72,6 +73,7 @@ recursive_view! {
 //  `(T1, .., T12)` for arities 1..12
 // ================================================================
 
+/// Utility for reducing repetition. Calling this macro should be entirely safe.
 macro_rules! aliasable_tuple {
     (
         $t_last:ident $v_last:ident $map_last:ident $index_last:tt $(,)?
@@ -171,6 +173,7 @@ const _: () = {
 //  `()`
 // ================================================================
 
+/// Get `()` into a shape usable with [`recursive_view`].
 type Unit = ();
 
 // For consistency with other tuples.

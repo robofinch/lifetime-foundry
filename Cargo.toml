@@ -21,7 +21,7 @@ either          = { version = "1.15.0", default-features = false }
 
 
 # Out of the lints that do anything (non-deprecated clippy lints, non-migration rust lints),
-# AFAICT there are 36 left at the "allow" level :)
+# AFAICT there are 33 left at the "allow" level :)
 [workspace.lints.rust]
 # Note: I basically went through every allow-by-default lint, and am linting against
 # almost everything, except lints just related to migrating to Edition 2018, 2021, or 2024;
@@ -29,6 +29,7 @@ either          = { version = "1.15.0", default-features = false }
 
 ambiguous_negative_literals          = "warn"
 closure_returning_async_block        = "warn"
+deprecated_in_future                 = "warn"
 deref_into_dyn_supertrait            = "warn"
 elided_lifetimes_in_paths            = "warn"
 explicit_outlives_requirements       = "warn"
@@ -42,6 +43,7 @@ meta_variable_misuse                 = "warn"
 # than remembering to derive Copy in almost all applicable cases
 missing_copy_implementations         = "warn"
 missing_debug_implementations        = "warn"
+missing-unsafe-on-extern             = "warn"
 non_ascii_idents                     = "warn"
 redundant_imports                    = "warn"
 redundant_lifetimes                  = "warn"
@@ -54,6 +56,7 @@ trivial_numeric_casts                = "warn"
 unit_bindings                        = "warn"
 unnameable_types                     = "warn"
 unreachable_pub                      = "warn"
+unsafe_attr_outside_unsafe           = "warn"
 # Any module with unsafe code should do `#![expect(unsafe_code)]` at the top,
 # in an effort to make it easier to know at a glance whether a module uses `unsafe`.
 unsafe_code                          = "warn"
@@ -68,6 +71,7 @@ unused_lifetimes                     = "warn"
 unused_macro_rules                   = "warn"
 unused_qualifications                = "warn"
 variant_size_differences             = "warn"
+
 missing_docs                         = "warn"
 
 future_incompatible                  = { level = "warn", priority = -1 }
@@ -75,18 +79,19 @@ keyword-idents                       = { level = "warn", priority = -1 }
 # Currently, every lint in the `nonstandard_style` group is actually warn-by-default already.
 nonstandard_style                    = { level = "warn", priority = -1 }
 
-# Note that the `unused_results` lint is intentionally left as "allow"
+# Note that the `unused_results` lint is intentionally left as `allow`
+# `linker-messages` is left as `allow` in absence of a reason to worry about the linker
 
 # I would enable the following lints if possible, but they're unstable as of the middle of 2025:
 #   - fuzzy_provenance_casts
 #   - lossy_provenance_casts
+#   - multiple_supertrait_upcastable
 #   - must_not_suspend
 #   - non_exhaustive_omitted_patterns
-#   - supertrait_item_shadowing_definition
-#   - supertrait_item_shadowing_usage
+#   - resolving_to_items_shadowing_supertrait_items
+#   - shadowing_supertrait_items
 #   - unqualified_local_imports
-# `just clippy` will use the above lints on the nightly channel.
-# Note that `multiple_supertrait_upcastable` is left as allow.
+# `just clippy` and friends will use the above lints on the nightly channel.
 
 
 [workspace.lints.clippy]
@@ -139,6 +144,7 @@ let_with_type_underscore            = "allow"
 
 # Pedantic exceptions
 
+bool_to_int_with_if                 = "allow"
 # `map(..).unwrap_or(..)` is, I think, more readable than `map_or(.., ..)`.
 map_unwrap_or                       = "allow"
 redundant_else                      = "allow"
@@ -148,10 +154,11 @@ redundant_else                      = "allow"
 
 # `#[allow]` attributes should be used sparingly, but it's more convenient to simply be able
 # to use them when necessary, without extra shenanigans.
-# `just find_allow_attributes` can show where any `[allow(` string is, to find the attributes.
+# `just find-allow-attributes` can show where any `[allow(` string is, to find the attributes.
 allow_attributes                    = "allow"
 arbitrary_source_item_ordering      = "allow"
 arithmetic_side_effects             = "allow"
+decimal_literal_representation      = "allow"
 # A good lint, but the various "*_fs" modules in anchored-vfs have so many similar structs,
 # no point in adding weird acronym prefixes instead of leaving them namespaced.
 error_impl_error                    = "allow"
@@ -162,7 +169,7 @@ exhaustive_structs                  = "allow"
 if_then_some_else_none              = "allow"
 implicit_return                     = "allow"
 integer_division_remainder_used     = "allow"
-missing_docs_in_private_items       = "allow"
+little_endian_bytes                 = "allow"
 missing_trait_methods               = "allow"
 missing_inline_in_public_items      = "allow"
 mod_module_files                    = "allow"
