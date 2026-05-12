@@ -26,3 +26,6 @@ dependencies = [
 [[package]]
 name = "variance-family"
 version = "0.1.0"
+dependencies = [
+ "either",
+]

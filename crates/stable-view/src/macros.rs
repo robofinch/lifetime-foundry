@@ -109,6 +109,11 @@
 ///     type Tn: ?Sized;
 ///
 ///     type WithParams<U1, .., Un>;
+///     // Must implement `CovariantFamily<'a, 'other_data>` such that
+///     // `Varying<'stable, 'a, 'other_data, Self::WithParamsFamily<U1, ..>>`
+///     // is `Self::WithParams<Varying<'stable, 'a, 'other_data, U1>, ..>`.
+///     // Else, the code fails to compile.
+///     type WithParamsFamily<U1, .., Un>: /* complicated trait bound */;
 ///
 ///     const SET_DEFAULT_TO_RECURSIVE_VIEW_KIND: bool;
 ///
@@ -212,6 +217,9 @@
 ///     {
 ///         // The `T1, .., Tn` and `WithParams` associated types are not included, since the
 ///         // information you provide above is sufficient to define them.
+///         // You can optionally provide `WithParamsFamily`; else, it defaults to the same
+///         // as `WithParams`, which is equivalent to this:
+///         type WithParamsFamily<..> = path::to::your::Type<{'static}, {FOO}, {V}, ..>;
 ///
 ///         fn map<..>(this: &Self, ..) -> _ where .. {
 ///             // You fill in this implementation for your type.
@@ -265,6 +273,8 @@ macro_rules! recursive_view {
         for $($name:ident)::+<$({$($generics:tt)*},)* ..>
         $(where {$($where_bounds:tt)*})?
         {
+            $(type WithParamsFamily<..> = $($fam_name:ident)::+<$({$($fam_generics:tt)*},)* ..>;)?
+
             fn map<..>($this_ref:ident: &Self, ..) -> _ where .. {
                 $($map_impl:tt)*
             }
@@ -319,10 +329,17 @@ macro_rules! recursive_view {
             where
                 $($($where_bounds)*)?
             {
-                type View = $($name)::+<
-                    $($($generics)*,)*
-                    $(<$v as $crate::StableView<'a, 'other_data, $t>>::View),*
-                >;
+                type View = $crate::__emit_if_nonempty!(if {$($($fam_name)+)?} {
+                    $($($fam_name)::+)?<
+                        $($($($fam_generics)*,)*)?
+                        $(<$v as $crate::StableView<'a, 'other_data, $t>>::View),*
+                    >
+                } else {
+                    $($name)::+<
+                        $($($generics)*,)*
+                        $(<$v as $crate::StableView<'a, 'other_data, $t>>::View),*
+                    >
+                });
 
                 #[inline]
                 unsafe fn view<'stable>(
@@ -411,10 +428,17 @@ macro_rules! recursive_view {
             where
                 $($($where_bounds)*)?
             {
-                type ViewMut = $($name)::+<
-                    $($($generics)*,)*
-                    $(<$v as $crate::StableViewMut<'a, 'other_data, $t>>::ViewMut),*
-                >;
+                type ViewMut = $crate::__emit_if_nonempty!(if {$($($fam_name)+)?} {
+                    $($($fam_name)::+)?<
+                        $($($($fam_generics)*,)*)?
+                        $(<$v as $crate::StableViewMut<'a, 'other_data, $t>>::ViewMut),*
+                    >
+                } else {
+                    $($name)::+<
+                        $($($generics)*,)*
+                        $(<$v as $crate::StableViewMut<'a, 'other_data, $t>>::ViewMut),*
+                    >
+                });
 
                 #[inline]
                 unsafe fn view_mut<'stable>(
@@ -581,6 +605,18 @@ macro_rules! __maybe_emit {
     };
 
     (if false { $($tokens:tt)* }) => {};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __emit_if_nonempty {
+    (if {$($nonempty:tt)+} {$($then:tt)*} else {$($else:tt)*}) => {
+        $($then)*
+    };
+
+    (if {} {$($then:tt)*} else {$($else:tt)*}) => {
+        $($else)*
+    };
 }
 
 #[doc(hidden)]

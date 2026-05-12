@@ -62,6 +62,9 @@ mod more_alloc_impls;
 #[cfg(feature = "std")]
 mod more_std_impls;
 
+#[cfg(feature = "either")]
+mod either_impl;
+
 
 pub use self::{
     main_const_impls::VaryingRef,
@@ -108,3 +111,6 @@ pub mod sync {
     #[cfg(all(feature = "std", feature = "more-impls"))]
     pub use crate::more_std_impls::{VaryingRwLockReadGuard, VaryingRwLockWriteGuard};
 }
+
+#[cfg(feature = "either")]
+pub use self::either_impl::EitherFamily;

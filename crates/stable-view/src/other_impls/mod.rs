@@ -1,2 +1,2 @@
 #[cfg(feature = "either")]
-mod either;
+pub(crate) mod either;

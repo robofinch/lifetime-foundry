@@ -30,3 +30,4 @@ std         = ["alloc", "variance-family/std"]
 alloc       = ["variance-family/alloc"]
 
 more-impls  = ["variance-family/more-impls"]
+either      = ["dep:either", "variance-family/either"]

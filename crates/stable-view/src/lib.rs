@@ -41,6 +41,15 @@ mod std_impls;
 
 mod other_impls;
 
+
+#[doc(hidden)]
+pub mod __macro {
+    pub use variance_family;
+
+    pub use crate::macros::unsafe_recursive_view;
+}
+
+
 pub use self::{
     aliasable::AliasableRefMut,
     traits::{CustomView, CustomViewMut, StableClone, StableView, StableViewMut},
@@ -49,11 +58,3 @@ pub use self::{
         SetDefaultViewMut, UnstableViewKind, View, ViewMut, ZeroSizedViewKind,
     },
 };
-
-
-#[doc(hidden)]
-pub mod __macro {
-    pub use variance_family;
-
-    pub use crate::macros::unsafe_recursive_view;
-}

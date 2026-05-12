@@ -1341,7 +1341,7 @@ macro_rules! __impl_generic_wrapper {
         {
             fn prove_equal<'other_lower, OtherUpper>(
                 varying: $crate::RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
-            ) -> *mut *mut $($name)::+<$($varying_generics)*>
+            ) -> *mut *mut $($varying_name)::+<$($varying_generics)*>
             where
                 Self: $crate::WithLifetime<'varying, 'other_lower, OtherUpper>,
                 OtherUpper: $crate::UpperBound,
