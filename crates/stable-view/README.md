@@ -29,7 +29,26 @@ instance, the default implementation of `StableView<'_, '_, Option<T>>` sets
 
 # Architecture
 
-TODO: go over how the system works
+In order to allow custom third-party views of other crates' types, the `StableView`,
+`StableViewMut`, and `StableClone` traits are not implemented directly for types like `Vec<T>` or
+`Rc<T>`. Instead, the source data type is passed as a generic parameter to a stable view trait,
+and the trait is implemented for a "view kind" trait that indicates how the view is obtained.
+
+For example, [`PointerViewKind`] implements `StableView<'_, '_, Rc<T>>` and
+[`RecursiveViewKind<(VT, VE)>`] implements `StableView<'_, '_, Result<T, E>>`.
+
+A [`UnstableViewKind`] type implements the stable view traits for all source data types in a trivial
+way, by not putting any `'stable` data in its provided views.
+
+Still, it is useful for a type to indicate how it is *expected* to provide views in the most common
+case. For this purpose, [`DefaultViewKind`] is provided, whose impls of the stable view traits
+can be enabled by implementing the [`SetDefaultView`] and [`SetDefaultViewMut`] traits for a source
+data type.
+
+Note that the view kind types do not actually enforce any particular semantics on their stable view
+trait implementations (beyond the traits' own requirements), whether for soundness or just
+correctness; they are solely intended to be human-understandable categories. One-off dummy types
+would work just as well for view kinds (aside from concerns about ergonomics or readability).
 
 # `noalias` Types
 
@@ -87,6 +106,12 @@ any additional terms or conditions.
 [`StableClone`]: https://docs.rs/stable-view/0/stable_view/trait.StableClone.html
 [`AliasableRefMut<'_, T>`]: https://docs.rs/stable-view/0/stable_view/struct.AliasableRefMut.html
 [`AliasableBox<T>`]: https://docs.rs/stable-view/0/stable_view/struct.AliasableBox.html
+[`PointerViewKind`]: https://docs.rs/stable-view/0/stable_view/struct.PointerViewKind.html
+[`RecursiveViewKind<(VT, VE)>`]: https://docs.rs/stable-view/0/stable_view/struct.RecursiveViewKind.html
+[`UnstableViewKind`]: https://docs.rs/stable-view/0/stable_view/struct.UnstableViewKind.html
+[`DefaultViewKind`]: https://docs.rs/stable-view/0/stable_view/struct.DefaultViewKind.html
+[`SetDefaultView`]: https://docs.rs/stable-view/0/stable_view/trait.SetDefaultView.html
+[`SetDefaultViewMut`]: https://docs.rs/stable-view/0/stable_view/trait.SetDefaultViewMut.html
 [`Box::leak`]: https://doc.rust-lang.org/std/boxed/struct.Box.html#method.leak
 
 [`variance-family`]: https://docs.rs/variance-family/0/variance_family

@@ -9,6 +9,14 @@
 //!
 //! Note that these macros are what `variance-family` uses internally for *all* of its
 //! `unsafe impl`s, so they should be quite versatile.
+//!
+//! [`covariant`]: crate::covariant
+//! [`contravariant`]: crate::contravariant
+//! [`unvarying`]: crate::unvarying
+//! [`generic_wrapper`]: crate::generic_wrapper
+//! [`varying_ref_wrapper`]: crate::varying_ref_wrapper
+//! [`varying_ref_mut_wrapper`]: crate::varying_ref_mut_wrapper
+//! [`phantom_zst_methods`]: crate::phantom_zst_methods
 
 #![expect(
     unsafe_code,
@@ -132,6 +140,8 @@ macro_rules! covariant {
 /// remaining `unsafe` assertion. Currently, the `unsafe_code` and
 /// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
 /// will reliably work with hits macro.
+///
+/// [`covariant`]: crate::covariant
 #[macro_export]
 macro_rules! contravariant {
     {$($body:tt)*} => {
@@ -191,6 +201,8 @@ macro_rules! contravariant {
 /// remaining `unsafe` assertion. Currently, the `unsafe_code` and
 /// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
 /// will reliably work with hits macro.
+///
+/// [`covariant`]: crate::covariant
 #[macro_export]
 macro_rules! unvarying {
     {
@@ -536,6 +548,8 @@ macro_rules! generic_wrapper {
 ///
 /// ## `unsafe(not_a_foreign_fundamental_type)`
 /// See [`generic_wrapper`]; a `#[unsafe(not_a_foreign_fundamental_type)]` marker is required.
+///
+/// [`generic_wrapper`]: crate::generic_wrapper
 #[macro_export]
 macro_rules! varying_ref_wrapper {
     {
@@ -602,6 +616,8 @@ macro_rules! varying_ref_wrapper {
 /// remaining `unsafe` assertion. Currently, the `unsafe_code` and
 /// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
 /// will reliably work with hits macro.
+///
+/// [`generic_wrapper`]: crate::generic_wrapper
 #[macro_export]
 macro_rules! varying_ref_mut_wrapper {
     {

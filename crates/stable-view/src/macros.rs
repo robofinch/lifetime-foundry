@@ -2,6 +2,7 @@
 //! `unsafe` traits to a simpler list of requirements, applicable to common sorts of
 //! [`RecursiveViewKind`] implementations.
 //!
+//! [`recursive_view`]: crate::recursive_view
 //! [`RecursiveViewKind`]: crate::view_kinds::RecursiveViewKind
 #![expect(
     unsafe_code,
@@ -639,4 +640,6 @@ macro_rules! __replace {
 /// # Safety
 /// This function itself has no safety preconditions, but though the safety requirements for
 /// using [`recursive_view`] must be upheld.
+///
+/// [`recursive_view`]: crate::recursive_view
 pub const unsafe fn unsafe_recursive_view() {}

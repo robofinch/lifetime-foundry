@@ -9,6 +9,12 @@
 //! [`StableClone`]: StableClone
 //! [`AliasableRefMut<'_, T>`]: AliasableRefMut
 #![cfg_attr(feature = "alloc", doc = " [`AliasableBox<T>`]: AliasableBox")]
+//! [`PointerViewKind`]: PointerViewKind
+//! [`RecursiveViewKind<(VT, VE)>`]: RecursiveViewKind
+//! [`UnstableViewKind`]: UnstableViewKind
+//! [`DefaultViewKind`]: DefaultViewKind
+//! [`SetDefaultView`]: SetDefaultView
+//! [`SetDefaultViewMut`]: SetDefaultViewMut
 #![cfg_attr(feature = "alloc", doc = " [`Box::leak`]: alloc::boxed::Box::leak")]
 //! [`variance-family`]: variance_family
 //!
