@@ -194,6 +194,9 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 /// <https://github.com/rust-lang/unsafe-code-guidelines/issues/381>.
 ///
 /// # More Details for Implementors
+/// Below is an analytical approach to describing this trait, though looking at the source
+/// code of this crate ([`alloc_impls.rs`] in particular) may be more helpful.
+///
 /// Let `CustomView<'a, 'stable, 'other_data, Data, Self>` be abbreviated as `Self::View<'stable>`.
 ///
 /// To elaborate on what is meant by the prohibition against certain operations "invalidating"
@@ -298,6 +301,42 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 /// cause any problems. It seems unlikely that any problems from coercions could occur accidentally
 /// (that is, without intentionally invalidating views as discussed above).
 ///
+/// # `transmute` in `view` Implementation
+/// A common pattern in implementations of [`StableView::view`] may be something like the following:
+///
+/// ```ignore
+/// let stable_eq_a: CustomView<'a, 'a, 'other_data, Data, Self> = data;
+///
+/// // SAFETY: See above the safety comment of the `unsafe impl` of `StableView`. Additionally,
+/// // the caller of `view` unsafely asserts that the returned view is only used when the source
+/// // data has only been moved or coerced (or had no-ops occur) from just after this function
+/// // returns (and, therefore, also starting from now, since we have a `&` borrow of the source
+/// // data) until the time of use, and that `'other_data` has not ended when it's used. By the same
+/// // reasoning that enables the `unsafe` trait impl, we know that those uses do not invalidate
+/// // `'stable` data and that lifetime extension of the `'stable` lifetime parameter is sound. Any
+/// // further soundness concerns are the responsibility of the caller of `view`.
+/// unsafe {
+///     transmute::<
+///         CustomView<'a, 'a, 'other_data, Data, Self>,
+///         CustomView<'a, 'stable, 'other_data, Data, Self>,
+///     >(stable_eq_a)
+/// }
+/// ```
+///
+/// Instead of needing to write out a long explanation each time, just say:
+///
+/// ```ignore
+/// let stable_eq_a: CustomView<'a, 'a, 'other_data, Data, Self> = data;
+///
+/// // SAFETY: See the "`transmute` in `view` Implementation" section of the `StableView` docs.
+/// unsafe {
+///     transmute::<
+///         CustomView<'a, 'a, 'other_data, Data, Self>,
+///         CustomView<'a, 'stable, 'other_data, Data, Self>,
+///     >(stable_eq_a)
+/// }
+/// ```
+///
 /// # Prior Art
 ///
 /// This trait is similar to [`AliasableDeref`], but supporting an arbitrary lifetime-infected
@@ -319,6 +358,7 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 /// [`MaybeUninit`]: core::mem::MaybeUninit
 /// [`AliasableRefMut<'b, T>`]: crate::aliasable::AliasableRefMut
 /// [`Self::View`]: StableView::View
+/// [`alloc_impls.rs`]: https://github.com/robofinch/lifetime-foundry/blob/main/crates/stable-view/src/alloc_impls.rs
 /// [`AliasableDeref`]: https://docs.rs/aliasable_deref_trait/1.0.0/aliasable_deref_trait/trait.AliasableDeref.html
 /// [`StableDeref`]: https://docs.rs/stable_deref_trait/1.2.1/stable_deref_trait/trait.StableDeref.html
 /// [is unsound]: https://github.com/Storyyeller/stable_deref_trait/issues/15#issuecomment-3714995546
@@ -426,6 +466,45 @@ pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
 /// of [`StableView`]. The soundness of the third operation, of course, is trivial, leaving only
 /// the first operation for serious consideration.
 ///
+/// /// # `transmute` in `view_mut` Implementation
+/// A common pattern in implementations of [`StableViewMut::view_mut`] may be something like the
+/// following:
+///
+/// ```ignore
+/// let stable_eq_a: CustomViewMut<'a, 'a, 'other_data, Data, Self> = data;
+///
+/// // SAFETY: See above the safety comment of the `unsafe impl` of `StableViewMut`.
+/// // Additionally, the caller of `view_mut` unsafely asserts that the returned view is only
+/// // used when the source data has only been moved or coerced (or had no-ops occur) from just
+/// // after this function returns (and, therefore, also starting from now, since we have a
+/// // `&mut` borrow of the source data) until the time of use, and that `'other_data` has not
+/// // ended when it's used. By the same reasoning that enables the `unsafe` trait impl, we know
+/// // that those uses do not invalidate `'stable` data and that lifetime extension of the
+/// // `'stable` lifetime parameter is sound. Any further soundness concerns are the
+/// // responsibility of the caller of `view_mut`.
+/// unsafe {
+///     transmute::<
+///         CustomViewMut<'a, 'a, 'other_data, Data, Self>,
+///         CustomViewMut<'a, 'stable, 'other_data, Data, Self>,
+///     >(stable_eq_a)
+/// }
+/// ```
+///
+/// Instead of needing to write out a long explanation each time, just say:
+///
+/// ```ignore
+/// let stable_eq_a: CustomViewMut<'a, 'a, 'other_data, Data, Self> = data;
+///
+/// // SAFETY: See the "`transmute` in `view_mut` Implementation" section of the
+/// // `StableViewMut` docs.
+/// unsafe {
+///     transmute::<
+///         CustomViewMut<'a, 'a, 'other_data, Data, Self>,
+///         CustomViewMut<'a, 'stable, 'other_data, Data, Self>,
+///     >(stable_eq_a)
+/// }
+/// ```
+///
 /// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html
 pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'other_data, Data> {
     /// A temporary (but somewhat stable) mutable view of the implementing type.
@@ -498,8 +577,9 @@ pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'o
 ///
 /// ## Requirement 1
 ///
-/// A source `Data` value is always in a nonempty pool, containing at least itself. If `Self`
-/// implements [`StableClone<'_, '_, Data>`], then a clone of a `Data` value produced
+/// A source `Data` value is always in exactly one nonempty pool, containing at least itself.
+/// (Note that *other* non-`Data` values may be in zero, one, two, or more pools.)
+/// If `Self` implements [`StableClone<'_, '_, Data>`], then a clone of a `Data` value produced
 /// via [`Clone::clone`] or [`Clone::clone_from`] **must** be added to the conceptual pool which the
 /// source `Data` value is in (at the time the clone is produced), under the pool definition of
 /// `Self` and `Data`.

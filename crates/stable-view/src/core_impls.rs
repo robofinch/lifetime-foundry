@@ -11,7 +11,6 @@
 //!
 //! With the `more-impls` feature, also:
 //!
-//! - `[T]` (via a custom helper type),
 //! - `(T1, ..., Tn)` of arities 7-12.
 
 #![expect(unsafe_code, reason = "implement the unsafe `aliasable-view` traits")]
@@ -29,8 +28,8 @@ use crate::{
 };
 
 
-// TODO: Provide a `RecursiveStableSliceView<'a, 'stable, T, V = DefaultViewKind>`
-// type for viewing `[T]`.
+// TODO: If there's any demand, consider making helper types for implementing
+// `RecursiveViewKind` for `StableView<'_, '_, [T]>`.
 
 // ================================================================
 //  `[T; N]`
@@ -64,6 +63,7 @@ recursive_view! {
         }
     }
 }
+
 
 // ================================================================
 //  `(T1, .., T12)` for arities 1..12
@@ -331,15 +331,7 @@ where
     {
         let stable_eq_a: &'a T = data;
 
-        // SAFETY: See the safety comment of the above `unsafe` trait impl.
-        // The caller of `view` unsafely asserts that the returned view is only used when the source
-        // data has only been moved, coerced, or immutably operated on (in any quantity and order)
-        // from just after this function returns (and, therefore, also starting from now, since we
-        // have a `&` borrow of the source data) until the time of use, and that `'other_data` has
-        // not ended when it's used. By the same reasoning that enables the `unsafe` trait impl, we
-        // know that those uses do not invalidate `'stable` data and that lifetime extension of the
-        // `'stable` lifetime parameter is sound. Any further soundness concerns are the
-        // responsibility of the caller of `view`.
+        // SAFETY: See the "`transmute` in `view` Implementation" section of the `StableView` docs.
         unsafe {
             transmute::<
                 &'a T,
@@ -391,15 +383,7 @@ where
     {
         let stable_eq_a: &'a T = data;
 
-        // SAFETY: See the safety comment of the above `unsafe` trait impl.
-        // The caller of `view` unsafely asserts that the returned view is only used when the source
-        // data has only been moved, coerced, or immutably operated on (in any quantity and order)
-        // from just after this function returns (and, therefore, also starting from now, since we
-        // have a `&` borrow of the source data) until the time of use, and that `'other_data` has
-        // not ended when it's used. By the same reasoning that enables the `unsafe` trait impl, we
-        // know that those uses do not invalidate `'stable` data and that lifetime extension of the
-        // `'stable` lifetime parameter is sound. Any further soundness concerns are the
-        // responsibility of the caller of `view`.
+        // SAFETY: See the "`transmute` in `view` Implementation" section of the `StableView` docs.
         unsafe {
             transmute::<
                 &'a T,
@@ -446,15 +430,8 @@ where
     {
         let stable_eq_a: &'a mut T = data;
 
-        // SAFETY: See the safety comment of the above `unsafe` trait impl.
-        // The caller of `view_mut` unsafely asserts that the returned view is only used when the
-        // source data has only been moved or coerced (or had no-ops occur) from just after this
-        // function returns (and, therefore, also starting from now, since we have a `&mut` borrow
-        // of the source data) until the time of use, and that `'other_data` has not ended when it's
-        // used. By the same reasoning that enables the `unsafe` trait impl, we know that those uses
-        // do not invalidate `'stable` data and that lifetime extension of the `'stable` lifetime
-        // parameter is sound. Any further soundness concerns are the responsibility of the caller
-        // of `view_mut`.
+        // SAFETY: See the "`transmute` in `view_mut` Implementation" section of the
+        // `StableViewMut` docs.
         unsafe {
             transmute::<
                 &'a mut T,
@@ -530,6 +507,7 @@ impl SetDefaultViewMut<'_, '_> for core::convert::Infallible {
 /// The definition of conceptual pool associated with the data type `Infallible` and view kind
 /// `ZeroSizedViewKind` is that every value is always in one pool, which is always nonempty.
 unsafe impl StableClone<'_, '_, core::convert::Infallible> for ZeroSizedViewKind {}
+
 
 // ================================================================
 //  `option::Option`
