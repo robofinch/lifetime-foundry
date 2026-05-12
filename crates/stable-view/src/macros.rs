@@ -360,7 +360,7 @@ macro_rules! recursive_view {
                         // SAFETY: `'stable = 'a` is guaranteed to be sound.
                         let $map = |view_component| unsafe {
                             <$v as $crate::StableView<'a, 'other_data, $t>>::view::<'a>(
-                                view_component
+                                view_component,
                             )
                         };
                     )*
@@ -459,7 +459,7 @@ macro_rules! recursive_view {
                         // SAFETY: `'stable = 'a` is guaranteed to be sound.
                         let $map = |view_component| unsafe {
                             <$v as $crate::StableViewMut<'a, 'other_data, $t>>::view_mut::<'a>(
-                                view_component
+                                view_component,
                             )
                         };
                     )*

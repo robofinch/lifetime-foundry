@@ -338,7 +338,7 @@ impl<'other_data, T: ?Sized + 'other_data> SetDefaultViewMut<'_, 'other_data> fo
 /// `Rc<U>` values from unsizing coercions, custom types that share strong ref ownership in
 /// interesting ways, or custom types that hold more than one strong ref), *except*, if the `T`
 /// value (not refcounts) of the `Rc` allocation is mutated, then all data values in the pool are
-/// considered to be transfered over to a new pool (while the previous pool is left empty).
+/// considered to be transferred over to a new pool (while the previous pool is left empty).
 ///
 /// In particular, the conceptual pool associated with a view is nonempty iff the strong count is
 /// nonzero and the value (not refcounts) of the `Rc` allocation has not been mutated since the
@@ -503,7 +503,7 @@ impl<'other_data, T: ?Sized + 'other_data> SetDefaultViewMut<'_, 'other_data> fo
 /// `Arc<U>` values from unsizing coercions, custom types that share strong ref ownership in
 /// interesting ways, or custom types that hold more than one strong ref), *except*, if the `T`
 /// value (not refcounts) of the `Arc` allocation is mutated, then all data values in the pool are
-/// considered to be transfered over to a new pool (while the previous pool is left empty).
+/// considered to be transferred over to a new pool (while the previous pool is left empty).
 ///
 /// In particular, the conceptual pool associated with a view is nonempty iff the strong count is
 /// nonzero and the value (not refcounts) of the `Arc` allocation has not been mutated since the

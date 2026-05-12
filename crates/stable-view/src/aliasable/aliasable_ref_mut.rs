@@ -58,17 +58,18 @@ use crate::{
 /// also invalidate those pointers and references due to interactions among themselves, as normal.)
 ///
 /// [^1]: This qualifier is intended to exclude pathological third-party implementations and
-///   pathological interpretations of these guarantees. The following lists cannot and are not
-///   intended to be exhaustive.
+///       pathological interpretations of these guarantees. The following lists cannot and are not
+///       intended to be exhaustive.
 ///
-///   Ways to obtain a `&T` to which the first guarantee applies include
-///   `AliasableRefMut`'s [`Deref`], [`AsRef`], and [`AliasableView::view`] implementations.
-///   Ways to obtain a `&mut T` to which the second guarantee applies include `AliasableRefMut`'s
-///   [`DerefMut`], [`AsMut`], and [`AliasableViewMut::view_mut`] implementations.
+///       Ways to obtain a `&T` to which the first guarantee applies include
+///       `AliasableRefMut`'s [`Deref`], [`AsRef`], and [`StableView::view`] implementations.
+///       Ways to obtain a `&mut T` to which the second guarantee applies include
+///       `AliasableRefMut`'s [`DerefMut`], [`AsMut`], and [`StableViewMut::view_mut`]
+///       implementations.
 ///
-///   [`AliasableRefMut::into_mut`] and [`AliasableRefMut::into_pin_mut`] are intentionally not
-///   listed, as they consume a `Self` value, so vacuously that value cannot be later used to
-///   invalidate any pointers or references; the value would already be gone.
+///       [`AliasableRefMut::into_mut`] and [`AliasableRefMut::into_pin_mut`] are intentionally not
+///       listed, as they consume a `Self` value, so vacuously that value cannot be later used to
+///       invalidate any pointers or references; the value would already be gone.
 ///
 /// # Layout
 /// This type is a transparent wrapper around a `NonNull<T>` and may be used in FFI (depending on

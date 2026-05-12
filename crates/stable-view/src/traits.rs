@@ -221,11 +221,11 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 ///   value of type `Data` is moved or coerced but old views continue to be used. (See above
 ///   `InvalidateOnMove` example.)
 ///
-/// The first three requirements are a matter of pointer [provenance], and ensures that the
-/// provenance of any pointers or references derived from pointers with a `'stable` lifetime in a
-/// `Self::View<'stable>` view are not shortened, reduced, or removed when the source `Data` is
-/// moved or coerced. (The Rust Abstract Machine knows nothing about the stack, heap, or static
-/// memory, so they are most pedantically expressed in terms of mutation and accesses, but in
+/// The first three requirements are a matter of pointer [provenance] and permissions, and ensures
+/// that the permissions of any pointers or references derived from pointers with a `'stable`
+/// lifetime in a `Self::View<'stable>` view are not shortened, reduced, or removed when the source
+/// `Data` is moved or coerced. (The Rust Abstract Machine knows nothing about the stack, heap, or
+/// static memory, so they are most pedantically expressed in terms of mutation and accesses, but in
 /// practice the first two requirements are about where the pointees are stored.)
 /// The fourth requirement ensures that manual checks of invariants that would hold of safe Rust,
 /// but not of `unsafe` code utilizing the aliasing guarantees provided by `StableView`, are not
@@ -275,7 +275,7 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 /// and/or be considered to write uninit data to the relevant pointers' pointees; therefore, such
 /// a situation is prohibited by the first two requirements.) The third requirement ensures that
 /// retags introduced by moving a `&'b mut T` (and, currently, `Box<T>`, among other types) do not
-/// invalidate the provenance of views.
+/// invalidate the provenance or permissions of views.
 ///
 /// The last remaining threat to the ability to lifetime-extend views and continue accessing them
 /// (interspersed with moves, coercions, and shared or immutable access to the source `Data`), is
@@ -357,6 +357,8 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 /// [`UnsafeCell`]: core::cell::UnsafeCell
 /// [`MaybeUninit`]: core::mem::MaybeUninit
 /// [`AliasableRefMut<'b, T>`]: crate::aliasable::AliasableRefMut
+/// [`DefaultViewKind`]: crate::view_kinds::DefaultViewKind
+/// [`PointerViewKind`]: crate::view_kinds::PointerViewKind
 /// [`Self::View`]: StableView::View
 /// [`alloc_impls.rs`]: https://github.com/robofinch/lifetime-foundry/blob/main/crates/stable-view/src/alloc_impls.rs
 /// [`AliasableDeref`]: https://docs.rs/aliasable_deref_trait/1.0.0/aliasable_deref_trait/trait.AliasableDeref.html
@@ -466,7 +468,7 @@ pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
 /// of [`StableView`]. The soundness of the third operation, of course, is trivial, leaving only
 /// the first operation for serious consideration.
 ///
-/// /// # `transmute` in `view_mut` Implementation
+/// # `transmute` in `view_mut` Implementation
 /// A common pattern in implementations of [`StableViewMut::view_mut`] may be something like the
 /// following:
 ///
