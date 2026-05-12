@@ -1,17 +1,17 @@
 <div align="center" class="rustdoc-hidden">
-<h1> Aliasable View </h1>
+<h1> Stable View </h1>
 </div>
 
-[<img alt="github" src="https://img.shields.io/badge/github-aliasable--view-08f?logo=github" height="20">](https://github.com/robofinch/lifetime-foundry/tree/main/crates/aliasable-view)
-[![Latest version](https://img.shields.io/crates/v/aliasable-view.svg)](https://crates.io/cratesaliasable-view)
-[![Documentation](https://img.shields.io/docsrs/aliasable-view)](https://docs.rs/aliasable-view/0)
+[<img alt="github" src="https://img.shields.io/badge/github-stable--view-08f?logo=github" height="20">](https://github.com/robofinch/lifetime-foundry/tree/main/crates/stable-view)
+[![Latest version](https://img.shields.io/crates/v/stable-view.svg)](https://crates.io/crates/stable-view)
+[![Documentation](https://img.shields.io/docsrs/stable-view)](https://docs.rs/stable-view/0)
 [![Apache 2.0 or MIT license.](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](#license)
 
 # Overview
 
 Get temporary, but somewhat stable, "views" of values.
 
-This crate provides [`AliasableView`], [`AliasableViewMut`], and [`AliasableClone`] traits
+This crate provides [`StableView`], [`StableViewMut`], and [`StableClone`] traits
 which prohibit certain actions, such as moving a value, from invalidating the temporary views
 of values implementing the traits.
 
@@ -22,16 +22,23 @@ the conditions laid out in the traits are satisfied, the views can be continue t
 rules would ordinarily make such a struct impossible or unsound to implement.
 
 The traits also make use of [`variance-family`] in order to give implementations substantial freedom
-over what their view types are; rather than a plain `&'a Self::Target` reference (as with the
-`Deref` trait), a view can be an arbitrary type (parameterized by a lifetime, if needed). For
-instance, `Option<T>` implements `AliasableView` when `T: AliasableView` by setting
-`View<'a, Option<T>>` to `Option<View<'a, T>>`.
+over what their view types are; rather than a plain `&'stable Self::Target` reference (as with the
+`Deref` trait), a view can be an arbitrary type (parameterized by several lifetimes, if needed). For
+instance, the default implementation of `StableView<'_, '_, Option<T>>` sets
+`View<'_, '_, '_, Option<T>>` to `Option<View<'_, '_, '_, T>>`.
+
+# Architecture
+
+TODO: go over how the system works
 
 # `noalias` Types
 
-`&mut T` and ([currently]) `Box<T>` cannot implement [`AliasableView`] or [`AliasableViewMut`];
-with Rust's current `noalias` semantics for those types, moving a value of either of those types
-would assert exclusive access over its pointee, which could invalidate views to its pointee.
+`&mut T` and ([currently]) `Box<T>` cannot provide `&'stable T` or `&'stable mut T` references
+to their direct contents; with Rust's current `noalias` semantics for those types, moving a value
+of either of those types would assert exclusive access over its pointee, which could invalidate
+views to its pointee. (You can think of moving a `&mut T` or `Box<T>` as being very similar to
+moving a `T` itself.)
+
 Therefore, aliasable versions of those types, [`AliasableRefMut<'_, T>`] and [`AliasableBox<T>`],
 are provided. Most other common types, including `Vec<T>`, do not assert exclusive access over
 data they reference when they are moved. That is [very unlikely to change], but if it ever does,
@@ -47,11 +54,11 @@ source value is moved does not seem critical for the soundness of self-referenti
 crate's traits more narrowly focus on the properties needed for lifetime transmutes (or lifetime
 erasure) of self-references to be sound in self-referential structs.
 
-That does imply, for example, that a wacky implementation of [`AliasableViewMut`] can soundly return
-a different value from [`Box::leak`] on each call, a `MyString` type may provide "views" of a
-source string by cloning it on every call, and a `MyVec<T>` may implement [`AliasableView`] by
-returning a `&T` view to an element which is randomly chosen on each call. Such oddities are
-probably not very useful, but neither do they harm soundness.
+That does imply, for example, that a wacky implementation of [`StableViewMut`] can soundly return
+a different value from [`Box::leak`] on each call, "views" of a `MyString` type may be provided by
+cloning a source string on every call, and a `RecursiveView<()>` may implement [`StableView`] for
+`MyVec<T>` by returning a `&T` view to an element which is randomly chosen on each call. Such
+oddities are probably not very useful, but neither do they harm soundness.
 
 (Moreover, the idea of a "stable" deref does not extend well to arbitrary lifetime-infected types.)
 
@@ -75,11 +82,11 @@ any additional terms or conditions.
 [LICENSE-APACHE]: LICENSE-APACHE
 [LICENSE-MIT]: LICENSE-MIT
 
-[`AliasableView`]: https://docs.rs/aliasable-view/0/aliasable_view/trait.AliasableView.html
-[`AliasableViewMut`]: https://docs.rs/aliasable-view/0/aliasable_view/trait.AliasableViewMut.html
-[`AliasableClone`]: https://docs.rs/aliasable-view/0/aliasable_view/trait.AliasableClone.html
-[`AliasableRefMut<'_, T>`]: https://docs.rs/aliasable-view/0/aliasable_view/struct.AliasableRefMut.html
-[`AliasableBox<T>`]: https://docs.rs/aliasable-view/0/aliasable_view/struct.AliasableBox.html
+[`StableView`]: https://docs.rs/stable-view/0/stable_view/trait.StableView.html
+[`StableViewMut`]: https://docs.rs/stable-view/0/stable_view/trait.StableViewMut.html
+[`StableClone`]: https://docs.rs/stable-view/0/stable_view/trait.StableClone.html
+[`AliasableRefMut<'_, T>`]: https://docs.rs/stable-view/0/stable_view/struct.AliasableRefMut.html
+[`AliasableBox<T>`]: https://docs.rs/stable-view/0/stable_view/struct.AliasableBox.html
 [`Box::leak`]: https://doc.rust-lang.org/std/boxed/struct.Box.html#method.leak
 
 [`variance-family`]: https://docs.rs/variance-family/0/variance_family

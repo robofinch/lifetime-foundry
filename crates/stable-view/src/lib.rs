@@ -4,9 +4,9 @@
 //! [LICENSE-APACHE]: https://github.com/robofinch/lifetime-foundry/blob/main/LICENSE-APACHE
 //! [LICENSE-MIT]: https://github.com/robofinch/lifetime-foundry/blob/main/LICENSE-MIT
 //!
-//! [`AliasableView`]: AliasableView
-//! [`AliasableViewMut`]: AliasableViewMut
-//! [`AliasableClone`]: AliasableClone
+//! [`StableView`]: StableView
+//! [`StableViewMut`]: StableViewMut
+//! [`StableClone`]: StableClone
 //! [`AliasableRefMut<'_, T>`]: AliasableRefMut
 #![cfg_attr(feature = "alloc", doc = " [`AliasableBox<T>`]: AliasableBox")]
 #![cfg_attr(feature = "alloc", doc = " [`Box::leak`]: alloc::boxed::Box::leak")]
@@ -27,6 +27,7 @@ extern crate std;
 
 
 mod traits;
+mod view_kinds;
 mod macros;
 mod aliasable;
 
@@ -42,9 +43,10 @@ mod other_impls;
 
 pub use self::{
     aliasable::AliasableRefMut,
-    traits::{
-        AliasableClone, AliasableView, AliasableViewMut,
-        IntoAliasable, IntoAliasableMut, View, ViewMut,
+    traits::{CustomView, CustomViewMut, StableClone, StableView, StableViewMut},
+    view_kinds::{
+        CollectionViewKind, DefaultViewKind, PointerViewKind, RecursiveViewKind, SetDefaultView,
+        SetDefaultViewMut, UnstableViewKind, View, ViewMut, ZeroSizedViewKind,
     },
 };
 
@@ -53,5 +55,5 @@ pub use self::{
 pub mod __macro {
     pub use variance_family;
 
-    pub use crate::macros::unsafe_map_aliasable;
+    pub use crate::macros::unsafe_recursive_view;
 }

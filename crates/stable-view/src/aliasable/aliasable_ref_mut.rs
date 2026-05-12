@@ -1,6 +1,8 @@
 #![expect(unsafe_code, reason = "assert variance and soundness of lifetime extension")]
 
-use core::{cmp::Ordering, marker::PhantomData, pin::Pin, ptr::NonNull};
+#![expect(clippy::undocumented_unsafe_blocks, reason = "TODO")]
+
+use core::{cmp::Ordering, marker::PhantomData, mem::transmute, pin::Pin, ptr::NonNull};
 use core::{
     fmt::{Debug, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
@@ -9,8 +11,9 @@ use core::{
 
 use variance_family::{Unvarying, VaryingRef, VaryingRefMut};
 
-use crate::traits::{
-    AliasableView, AliasableViewMut, IntoAliasable, IntoAliasableMut, View, ViewMut,
+use crate::{
+    traits::{StableView, StableViewMut},
+    view_kinds::{PointerViewKind, SetDefaultView, SetDefaultViewMut},
 };
 
 
@@ -369,28 +372,37 @@ impl<'a, T: ?Sized> From<&'a mut T> for AliasableRefMut<'a, T> {
 // in any quantity and order on the source `Self` value will not invalidate the returned `&T` view.
 // (In fact, `AliasableRefMut` guarantees that dropping it will not invalidate views, either,
 // which is stronger than the requirement imposed by `AliasableView`.)
-unsafe impl<'upper, T> AliasableView<&'upper ()> for AliasableRefMut<'_, T>
+unsafe impl<'a, 'b, 'other_data, T> StableView<'a, 'other_data, AliasableRefMut<'b, T>>
+for PointerViewKind
 where
-    T: ?Sized + 'upper,
+    T: ?Sized + 'b,
+    'b: 'other_data,
 {
     type View = VaryingRef<Unvarying<T>>;
 
     #[inline]
-    fn view(&self) -> View<'_, Self, &'upper ()> {
-        self
+    unsafe fn view<'stable>(data: &'a AliasableRefMut<'b, T>) -> &'stable T
+    where
+        'other_data: 'stable,
+        'stable: 'a,
+    {
+        let stable_eq_a: &'a T = data;
+
+        unsafe {
+            transmute::<
+                &'a T,
+                &'stable T,
+            >(stable_eq_a)
+        }
     }
 }
 
-impl<'a, 'upper, T> IntoAliasable<&'upper ()> for &'a mut T
+impl<'b, 'other_data, T> SetDefaultView<'_, 'other_data> for AliasableRefMut<'b, T>
 where
-    T: ?Sized + 'upper,
+    T: ?Sized + 'b,
+    'b: 'other_data,
 {
-    type IntoAliasable = AliasableRefMut<'a, T>;
-
-    #[inline]
-    fn into_aliasable(self) -> Self::IntoAliasable {
-        AliasableRefMut::from_mut(self)
-    }
+    type Default = PointerViewKind;
 }
 
 // SAFETY: By the aliasing guarantee of `AliasableRefMut` for `&mut T` references obtained from
@@ -398,19 +410,38 @@ where
 // and order) on the source `Self` value will not invalidate the returned `&mut T` view.
 // (In fact, `AliasableRefMut` guarantees that dropping it will not invalidate views, either, which
 // is stronger than the requirement imposed by `AliasableViewMut`.)
-unsafe impl<'upper, T> AliasableViewMut<&'upper ()> for AliasableRefMut<'_, T>
+unsafe impl<'a, 'b, 'other_data, T> StableViewMut<'a, 'other_data, AliasableRefMut<'b, T>>
+for PointerViewKind
 where
-    T: ?Sized + 'upper,
+    T: ?Sized + 'b + 'other_data,
+    'b: 'other_data,
 {
     type ViewMut = VaryingRefMut<Unvarying<T>>;
 
     #[inline]
-    fn view_mut(&mut self) -> ViewMut<'_, Self, &'upper ()> {
-        self
+    unsafe fn view_mut<'stable>(data: &'a mut AliasableRefMut<'b, T>) -> &'stable mut T
+    where
+        'other_data: 'stable,
+        'stable: 'a,
+    {
+        let stable_eq_a: &'a mut T = data;
+
+        unsafe {
+            transmute::<
+                &'a mut T,
+                &'stable mut T,
+            >(stable_eq_a)
+        }
     }
 }
 
-impl<'upper, T: ?Sized + 'upper> IntoAliasableMut<&'upper ()> for &mut T {}
+impl<'b, 'other_data, T> SetDefaultViewMut<'_, 'other_data> for AliasableRefMut<'b, T>
+where
+    T: ?Sized + 'b,
+    'b: 'other_data,
+{
+    type DefaultMut = PointerViewKind;
+}
 
 // SAFETY: Since `AliasableRefMut<'_, T>` acts like `&mut T`,
 // it can be `Send` if `&mut T` is `Send`. We know that `&mut T` is `Send` iff `T` is `Send`.

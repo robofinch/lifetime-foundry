@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/aliasable-view",
+    "crates/stable-view",
     "crates/attached-ref",
     "crates/variance-family"
 ]
@@ -13,8 +13,8 @@ repository   = "https://github.com/robofinch/lifetime-foundry"
 license      = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-aliasable-view  = { version = "0.1.0", path = "crates/aliasable-view",  default-features = false }
 attached-ref    = { version = "0.1.0", path = "crates/attached-ref",    default-features = false }
+stable-view     = { version = "0.1.0", path = "crates/stable-view",     default-features = false }
 variance-family = { version = "0.1.0", path = "crates/variance-family", default-features = false }
 
 either          = { version = "1.15.0", default-features = false }

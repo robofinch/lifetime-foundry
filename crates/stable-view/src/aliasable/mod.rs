@@ -5,7 +5,7 @@ mod aliasable_ref_mut;
 mod aliasable_box;
 
 // Currently, `Vec` and friends are already aliasable. If that ever changes for whatever reason,
-// this crate will make a breaking change to remove `AliasableView(Mut)` impls for `Vec` and friends
-// and make `AliasableVec`, `AliasableString`, `AliasableCowSlice`, etc.
+// this crate will make a breaking change to remove `StableView(Mut)` impls for `Vec` and friends
+// and create `AliasableVec`, `AliasableString`, `AliasableCowSlice`, etc.
 
 pub use self::aliasable_ref_mut::AliasableRefMut;

@@ -1,9 +1,9 @@
 [package]
-name         = "aliasable-view"
+name         = "stable-view"
 authors      = ["Finley Huggins"]
-description  = "Markers for types with views that can be soundly aliased and lifetime-extended in certain conditions"
+description  = "Get temporary views which remain valid when the source data is moved"
 readme       = "README.md"
-keywords     = ["aliasable", "lifetime", "reference", "covariance", "contravariance"]
+keywords     = ["stable", "aliasable", "lifetime", "reference", "covariance"]
 categories   = ["rust-patterns", "memory-management", "no-std"]
 include      = ["Cargo.toml", "src/**/*.rs", "LICENSE-APACHE", "LICENSE-MIT", "README.md"]
 version      = "0.1.0"
@@ -24,8 +24,9 @@ variance-family = { workspace = true, default-features = false }
 either = { workspace = true, default-features = false, optional = true }
 
 [features]
-default = ["std"]
-std     = ["alloc", "variance-family/std"]
-alloc   = ["variance-family/alloc"]
+default     = ["std"]
 
-more-impls = ["variance-family/more-impls"]
+std         = ["alloc", "variance-family/std"]
+alloc       = ["variance-family/alloc"]
+
+more-impls  = ["variance-family/more-impls"]
