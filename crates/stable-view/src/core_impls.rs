@@ -359,7 +359,7 @@ where
 // and releases its exclusive borrow rights over the referent, we know that:
 // - Moving the `RefMut` does not invalidate immutable references to its `T` referent, because a
 //   `RefMut` argument doesn't hold exclusivity for its whole scope, only until it drops; therefore,
-//   it uses a `NonNull` and cannot have `Box`'s `noalias` semantics.
+//   it cannot have `Box`'s `noalias` semantics.
 // - Coercing the `RefMut` does not invalidate its `T` referent for the same reason above.
 // - No sound immutable operation on the `RefMut` can invalidate shared references to the `T`
 //   referent; otherwise, that could invalidate other references obtained from other shared
@@ -406,9 +406,10 @@ where
 // and releases its exclusive borrow rights over the referent, we know that:
 // - Moving the `RefMut` does not invalidate immutable references to its `T` referent, because a
 //   `RefMut` argument doesn't hold exclusivity for its whole scope, only until it drops; therefore,
-//   it uses a `NonNull` and cannot have `Box`'s `noalias` semantics.
+//   it cannot have `Box`'s `noalias` semantics.
 // - Coercing the `RefMut` does not invalidate its `T` referent for the same reason above, noting
 //   that the referent is not stored inline.
+// - No-ops on the source data value are fine.
 //
 // (After the `'b` lifetime parameter expires, the source `RefCell` could be dropped,
 // and that's fine.)
@@ -421,9 +422,7 @@ where
     type ViewMut = VaryingRefMut<Unvarying<T>>;
 
     #[inline]
-    unsafe fn view_mut<'stable>(
-        data: &'a mut core::cell::RefMut<'b, T>,
-    ) -> &'stable mut T
+    unsafe fn view_mut<'stable>(data: &'a mut core::cell::RefMut<'b, T>) -> &'stable mut T
     where
         'other_data: 'stable,
         'stable: 'a,

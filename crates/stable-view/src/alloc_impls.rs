@@ -11,8 +11,6 @@
 
 #![expect(unsafe_code, reason = "implement the unsafe `aliasable-view` traits")]
 #![warn(clippy::missing_inline_in_public_items, reason = "trivial impls")]
-// We *don't* disable `clippy::absolute_paths`, since the types are repeated quite a bit
-// due to complicated bounds. (Plus, they're well-known.)
 
 use core::mem::transmute;
 use alloc::{rc::Rc, string::String, sync::Arc, vec::Vec};
