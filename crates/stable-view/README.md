@@ -9,23 +9,22 @@
 
 # Overview
 
-Get temporary, but somewhat stable, "views" of values.
+Get temporary "views" whose `'stable` data remains valid even when the views' source data is moved.
 
 This crate provides [`StableView`], [`StableViewMut`], and [`StableClone`] traits
 which prohibit certain actions, such as moving a value, from invalidating the temporary views
 of values implementing the traits.
 
 The traits are intended to be useful for self-referential structs; aliasable source data can be
-stored alongside a view to that data (or values derived from views to that data), and so long as
-the conditions laid out in the traits are satisfied, the views can be continue to be used
-(perhaps via `unsafe` lifetime extension) even when Rust's normal borrow checking and aliasing
-rules would ordinarily make such a struct impossible or unsound to implement.
+soundly stored alongside values containing `'stable` references (obtained via a stable view trait)
+to that source data, even when Rust's normal borrow checking and aliasing rules would ordinarily
+make such a struct impossible or unsound to implement.
 
-The traits also make use of [`variance-family`] in order to give implementations substantial freedom
-over what their view types are; rather than a plain `&'stable Self::Target` reference (as with the
-`Deref` trait), a view can be an arbitrary type (parameterized by several lifetimes, if needed). For
-instance, the default implementation of `StableView<'_, '_, Option<T>>` sets
-`View<'_, '_, '_, Option<T>>` to `Option<View<'_, '_, '_, T>>`.
+With this advanced `unsafe` target audience, it is quite difficult to either implement these traits
+or directly use their methods and guarantees in `unsafe` code; ideally, you should not need to
+directly interact with this crate, besides perhaps forwarding `V: StableView<..>` bounds (or
+similar) to other libraries in generic code. (As the author, it's no longer difficult for me to
+understand how this crate works, but I assume that it'd be difficult for others to learn.)
 
 # Architecture
 
@@ -37,7 +36,7 @@ and the trait is implemented for a "view kind" trait that indicates how the view
 For example, [`PointerViewKind`] implements `StableView<'_, '_, Rc<T>>` and
 [`RecursiveViewKind<(VT, VE)>`] implements `StableView<'_, '_, Result<T, E>>`.
 
-A [`UnstableViewKind`] type implements the stable view traits for all source data types in a trivial
+An [`UnstableViewKind`] type implements the stable view traits for all source data types in a trivial
 way, by not putting any `'stable` data in its provided views.
 
 Still, it is useful for a type to indicate how it is *expected* to provide views in the most common
@@ -49,6 +48,12 @@ Note that the view kind types do not actually enforce any particular semantics o
 trait implementations (beyond the traits' own requirements), whether for soundness or just
 correctness; they are solely intended to be human-understandable categories. One-off dummy types
 would work just as well for view kinds (aside from concerns about ergonomics or readability).
+
+The traits also make use of [`variance-family`] in order to give implementations substantial freedom
+over what their view types are; rather than a plain `&'stable Self::Target` reference (as with the
+`Deref` trait), a view can be an arbitrary type (parameterized by several lifetimes, if needed). For
+instance, the default implementation of `StableView<'a, 'other_data, Option<T>>` sets
+`View<'a, 'stable, 'other_data, Option<T>>` to `Option<View<'a, 'stable, 'other_data, T>>`.
 
 # `noalias` Types
 
@@ -75,11 +80,13 @@ erasure) of self-references to be sound in self-referential structs.
 
 That does imply, for example, that a wacky implementation of [`StableViewMut`] can soundly return
 a different value from [`Box::leak`] on each call, "views" of a `MyString` type may be provided by
-cloning a source string on every call, and a `RecursiveView<()>` may implement [`StableView`] for
+cloning a source string on every call, and `RecursiveView<()>` may implement [`StableView`] for
 `MyVec<T>` by returning a `&T` view to an element which is randomly chosen on each call. Such
 oddities are probably not very useful, but neither do they harm soundness.
 
-(Moreover, the idea of a "stable" deref does not extend well to arbitrary lifetime-infected types.)
+(Moreover, `stable_deref_trait` requires that successive calls to `deref` return the same address;
+while bytewise equality is the unambiguous definition of "same" for `usize`, extending the notion
+of "same" to arbitrary lifetime-infected types in a useful way is more difficult.)
 
 The [`aliasable`] crate also provides aliasable versions of `&mut T` and `Box<T>`, but the version
 on crates.io at the time of writing is unsound. Therefore, I decided to implement my own

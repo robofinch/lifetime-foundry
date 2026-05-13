@@ -16,7 +16,7 @@ invariance over a generic parameter in your own structs or enums. There is no si
 for covariance or contravariance.
 
 This crate enables you to place requirements on a generic type's variance over a `'varying`
-lifetime while thoroughly supporting non-`'static` data.
+lifetime parameter while thoroughly supporting non-`'static` data.
 (Type parameters cannot easily be supported in a useful way without `for<T>` binders.)
 
 # Overview
@@ -159,7 +159,7 @@ any additional terms or conditions.
 [`UnvaryingFamily`]: https://docs.rs/variance-family/0/variance_family/trait.UnvaryingFamily.html
 [`LendFamily`]: https://docs.rs/variance-family/0/variance_family/trait.LendFamily.html
 [`shorten`]: https://docs.rs/variance-family/0/variance_family/fn.shorten.html
-[`lengthen]: https://docs.rs/variance-family/0/variance_family/fn.lengthen.html
+[`lengthen`]: https://docs.rs/variance-family/0/variance_family/fn.lengthen.html
 [`shorten_lend`]: https://docs.rs/variance-family/0/variance_family/fn.shorten_lend.html
 [`change_bounds_from`]: https://docs.rs/variance-family/0/variance_family/fn.change_bounds_from.html
 [`change_bounds_into`]: https://docs.rs/variance-family/0/variance_family/fn.change_bounds_into.html
