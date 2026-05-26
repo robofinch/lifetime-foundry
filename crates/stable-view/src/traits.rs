@@ -584,9 +584,9 @@ pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'o
 /// A source `Data` value is always in exactly one nonempty pool, containing at least itself.
 /// (Note that *other* non-`Data` values may be in zero, one, two, or more pools.)
 /// If `Self` implements [`StableClone<'_, '_, Data>`], then a clone of a `Data` value produced
-/// via [`Clone::clone`] or [`Clone::clone_from`] **must** be added to the conceptual pool which the
-/// source `Data` value is in (at the time the clone is produced), under the pool definition of
-/// `Self` and `Data`.
+/// via `Data`'s implementations of [`Clone::clone`] or [`Clone::clone_from`] **must** be added to
+/// the conceptual pool which the source `Data` value is in (at the time the clone is produced),
+/// under the pool definition of `Self` and `Data`.
 ///
 /// ## Requirement 2
 ///
@@ -625,6 +625,16 @@ pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'o
 /// necessarily separate the data. One sort of view might not contain any `'stable` data at all.
 ///
 /// As such, those two `unsafe` traits are not incompatible.
+///
+/// # Soundness of relying on `Clone`
+/// As seen during the stabilization of `dyn Allocator` in the standard library, a `dyn`-compatible
+/// `unsafe` trait is generally incapable of placing constraints on how a different safe trait is
+/// (optionally) implemented. See <https://github.com/rust-lang/rust/issues/156920> for details.
+///
+/// Users of `StableClone` can rely on its constraints on `Data`'s implementations of the safe
+/// `Clone` trait because `StableClone` is not `dyn`-compatible. The fact that the `Data: Clone`
+/// bound is not optional might also suffice:
+/// <https://github.com/rust-lang/rust/issues/156920#issuecomment-4543098759>.
 ///
 /// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html
 /// [`mem::forget`]: core::mem::forget
