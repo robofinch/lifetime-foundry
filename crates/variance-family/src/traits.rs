@@ -102,6 +102,10 @@ pub type MaxUpperBound = &'static ();
 /// unsound if not for this trait being `unsafe`. In the event that another crate uses
 /// `#[fundamental]` types, it would likewise be permitted to assume that other crates do not
 /// implement `WithLifetime` for its types, even if the orphan rules would not prevent that.
+///
+/// ## `__ImplyBound`
+///
+/// You must leave `__ImplyBound` at its default `&'lower &'varying Upper` type.
 pub unsafe trait WithLifetime<
     'varying, 'lower, Upper: UpperBound,
     __ImplyBound = &'lower &'varying Upper,

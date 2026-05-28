@@ -39,14 +39,21 @@ generic_wrapper! {
     for #[unsafe(not_a_foreign_fundamental_type)] std::collections::HashSet<..>
 }
 
-generic_wrapper! {
-    impl<{
-        // SAFETY: `io::Cursor<T>` is covariant over `T`.
-        #[unsafe(covariant)] T (Is: Sized),
-    }> ([Co] + [Contra])variantFamily<'_, _>
-    // SAFETY: `variance-family` is allowed to implement traits for this type in `std`.
-    for #[unsafe(not_a_foreign_fundamental_type)] std::io::Cursor<..>
-}
+// TODO(core_io): someday, this should be moved to `more_core_impls`.
+#[allow(
+    clippy::std_instead_of_core,
+    reason = "on nightly, `Cursor` can be in `core`, which can trigger this lint",
+)]
+const _: () = {
+    generic_wrapper! {
+        impl<{
+            // SAFETY: `io::Cursor<T>` is covariant over `T`.
+            #[unsafe(covariant)] T (Is: Sized),
+        }> ([Co] + [Contra])variantFamily<'_, _>
+        // SAFETY: `variance-family` is allowed to implement traits for this type in `std`.
+        for #[unsafe(not_a_foreign_fundamental_type)] std::io::Cursor<..>
+    }
+};
 
 
 // ================================================================

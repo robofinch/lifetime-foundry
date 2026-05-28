@@ -830,10 +830,12 @@ macro_rules! __impl_with_lifetime {
         // could be different each time we use them. Such a scenario cannot cause unsoundness,
         // though, since we do not rely on delicate reasoning about the types;
         // we entirely leave it to the compiler to prove the necessary information.
-        // SAFETY: Thanks to mixed macro hygiene, the `Upper` generic we introduce cannot possibly
-        // be used in `$varying_type`. Additionally, a combination of orphan rules and the
-        // `#[unsafe(not_a_foreign_fundamental_type)]` annotation ensure that the other safety
-        // condition is met.
+        // SAFETY:
+        // - Thanks to mixed macro hygiene, the `Upper` generic we introduce cannot possibly
+        //   be used in `$varying_type`. The lower bound is not even given a name.
+        // - A combination of orphan rules and the `#[unsafe(not_a_foreign_fundamental_type)]`
+        //   annotation ensure that the second safety condition is met.
+        // - `__ImplyBound` is left at its default.
         unsafe impl<$($varying_single_use_param,)? Upper: $crate::UpperBound, $($params)*>
         $crate::WithLifetime<$varying_single_use, '_, Upper> for $family_type
         where
@@ -1297,6 +1299,7 @@ macro_rules! __impl_generic_wrapper {
         // - The caller asserted with `#[unsafe(not_a_foreign_fundamental_type)]` that the crate
         //   calling this macro is permitted to implement `WithLifetime`
         //   for the indicated `$name<$($generics)*>` type.
+        // - `__ImplyBound` is left at its default.
         unsafe impl<'varying, 'lower, $($impl_params)* Upper>
             $crate::WithLifetime<'varying, 'lower, Upper>
         for $($name)::+<$($generics)*>
@@ -1597,6 +1600,7 @@ macro_rules! __impl_varying_with_lifetime {
         //   so `N<'varying, T::Is>` does not use `'lower` or `&'upper ()`.
         // - The caller asserts with `#[unsafe(not_a_foreign_fundamental_type)]` that they are
         //   permitted to impl `WithLifetime` for the family type.
+        // - `__ImplyBound` is left at its default.
         unsafe impl<'varying, 'lower, 'upper, $t>
             $crate::WithLifetime<'varying, 'lower, &'upper ()>
         for $($name)::+<$fam_t>

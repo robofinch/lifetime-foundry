@@ -21,7 +21,7 @@ either          = { version = "1.15.0", default-features = false }
 
 
 # Out of the lints that do anything (non-deprecated clippy lints, non-migration rust lints),
-# AFAICT there are 33 left at the "allow" level :)
+# AFAICT there are 35 left at the "allow" level :)
 [workspace.lints.rust]
 # Note: I basically went through every allow-by-default lint, and am linting against
 # almost everything, except lints just related to migrating to Edition 2018, 2021, or 2024;
@@ -168,6 +168,9 @@ exhaustive_structs                  = "allow"
 # Similar to map_unwrap_or and whatnot
 if_then_some_else_none              = "allow"
 implicit_return                     = "allow"
+# Should *usually* be avoided, but there are valid use cases.
+inline_modules                      = "allow"
+inline_trait_bounds                 = "allow"
 integer_division_remainder_used     = "allow"
 little_endian_bytes                 = "allow"
 missing_trait_methods               = "allow"
