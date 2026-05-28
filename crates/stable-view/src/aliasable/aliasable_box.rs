@@ -384,15 +384,16 @@ impl<T: ?Sized> From<Pin<Box<T>>> for Pin<AliasableBox<T>> {
 // SAFETY: By the aliasing guarantee of `AliasableBox` for `&T` references obtained from
 // `Deref::deref` (among other methods), performing moves, coercions, or immutable operations
 // in any quantity and order on the source `Self` value will not invalidate the returned `&T` view.
-unsafe impl<'a, 'other_data, T: ?Sized + 'other_data> StableView<'a, 'other_data, AliasableBox<T>>
-for PointerViewKind
+unsafe impl<'a, 'data, T> StableView<'a, 'data, AliasableBox<T>> for PointerViewKind
+where
+    T: ?Sized + 'data,
 {
     type View = VaryingRef<Unvarying<T>>;
 
     #[inline]
     unsafe fn view<'stable>(data: &'a AliasableBox<T>) -> &'stable T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a T = data;
@@ -407,23 +408,23 @@ for PointerViewKind
     }
 }
 
-impl<'other_data, T: ?Sized + 'other_data> SetDefaultView<'_, 'other_data> for AliasableBox<T> {
+impl<'data, T: ?Sized + 'data> SetDefaultView<'_, 'data> for AliasableBox<T> {
     type Default = PointerViewKind;
 }
 
 // SAFETY: By the aliasing guarantee of `AliasableBox` for `&mut T` references obtained from
 // `DerefMut::deref_mut` (among other methods), performing moves or coercions (in any quantity
 // and order) on the source `Self` value will not invalidate the returned `&mut T` view.
-unsafe impl<'a, 'other_data, T> StableViewMut<'a, 'other_data, AliasableBox<T>> for PointerViewKind
+unsafe impl<'a, 'data, T> StableViewMut<'a, 'data, AliasableBox<T>> for PointerViewKind
 where
-    T: ?Sized + 'other_data,
+    T: ?Sized + 'data,
 {
     type ViewMut = VaryingRefMut<Unvarying<T>>;
 
     #[inline]
     unsafe fn view_mut<'stable>(data: &'a mut AliasableBox<T>) -> &'stable mut T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a mut T = data;
@@ -439,7 +440,7 @@ where
     }
 }
 
-impl<'other_data, T: ?Sized + 'other_data> SetDefaultViewMut<'_, 'other_data> for AliasableBox<T> {
+impl<'data, T: ?Sized + 'data> SetDefaultViewMut<'_, 'data> for AliasableBox<T> {
     type DefaultMut = PointerViewKind;
 }
 

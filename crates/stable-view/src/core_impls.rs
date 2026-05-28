@@ -24,7 +24,7 @@ use variance_family::{Unvarying, VaryingRef, VaryingRefMut};
 
 use crate::recursive_view;
 use crate::{
-    traits::{StableClone, StableView, StableViewMut},
+    traits::{StableClone, StableCopy, StableView, StableViewMut},
     view_kinds::{
         PointerViewKind, SetDefaultView, SetDefaultViewMut, UnstableViewKind, ZeroSizedViewKind,
     },
@@ -51,10 +51,12 @@ recursive_view! {
     // SAFETY:
     // The view components of a `[T; N]` are the `N` values of type `T`.
     //
-    // - The view components of a `[T; N]` value are not wrapped in interior mutability.
+    // - The view components of a `[T; N]` value are not wrapped in interior mutability within
+    //   the array.
     // - The view components of the clone of a `[T; N]` value are precisely the clones of
     //   each view component in the source `[T; N]` value. All source view components have at least
     //   one clone in the output, and each view component in the output is a clone.
+    // - Same holds for copies (as for clones).
     // - Any view components returned from `map` and `map_mut` are produced by applying the
     //   given `map` function to a view component of the source `self` value.
     unsafe impl<.., {const N: usize}> MapView<..> for Array<{N}, ..> {
@@ -96,11 +98,13 @@ macro_rules! aliasable_tuple {
                 // The view components of a `(T1, .., Tn)` are the `n` values of types
                 // `T1, .., Tn`,
                 //
-                // - The view components of a tuple are not wrapped in interior mutability.
+                // - The view components of a tuple are not wrapped in interior mutability within
+                //   the tuple.
                 // - The view components of the clone of a tuple are precisely the clones of
                 //   each view component in the source tuple. All source view components have at
                 //   least one clone in the output, and each view component in the output is a
                 //   clone.
+                // - Same holds for copies (as for clones).
                 // - Any view components returned from `map` and `map_mut` are produced by
                 //   applying the given `Ti` map function to a view component of the source `self`
                 //   value.
@@ -193,6 +197,7 @@ recursive_view! {
     //   each view component in the source unit tuple. All zero source view components have at
     //   least one clone in the output, and each of the zero view components in the output is a
     //   clone.
+    // - Same holds for copies (as for clones).
     // - Any of the zero view components returned from `map` and `map_mut` are produced by
     //   applying the given `Ti` map function to a view component of the source `self`
     //   value, where `1 <= i <= n == 0`.
@@ -208,13 +213,13 @@ recursive_view! {
 }
 
 // SAFETY: The view type contains no data which could be invalidated by the three operations.
-unsafe impl<'a, 'other_data> StableView<'a, 'other_data, ()> for ZeroSizedViewKind {
+unsafe impl<'a, 'data> StableView<'a, 'data, ()> for ZeroSizedViewKind {
     type View = ();
 
     #[inline]
     unsafe fn view<'stable>(_data: &'a ())
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {}
 }
@@ -225,13 +230,13 @@ impl SetDefaultView<'_, '_> for () {
 
 // SAFETY: The mutable view type contains no data which could be invalidated by the three
 // operations.
-unsafe impl<'a, 'other_data> StableViewMut<'a, 'other_data, ()> for ZeroSizedViewKind {
+unsafe impl<'a, 'data> StableViewMut<'a, 'data, ()> for ZeroSizedViewKind {
     type ViewMut = ();
 
     #[inline]
     unsafe fn view_mut<'stable>(_data: &'a mut ())
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {}
 }
@@ -249,6 +254,10 @@ impl SetDefaultViewMut<'_, '_> for () {
 /// `ZeroSizedViewKind` is that every value is always in one pool, which is always nonempty.
 unsafe impl StableClone<'_, '_, ()> for ZeroSizedViewKind {}
 
+// SAFETY: Note that `()`'s `Clone::clone` impl just copies it. Since the first
+// requirement is met for `Clone`, the extended first requirement is also met.
+unsafe impl StableCopy<'_, '_, ()> for ZeroSizedViewKind {}
+
 
 // ================================================================
 //  `&T`
@@ -259,9 +268,9 @@ unsafe impl StableClone<'_, '_, ()> for ZeroSizedViewKind {}
 // (whether immutable, mutable, a move, a drop, a coercion, whatever) can invalidate immutable
 // references to the `T` referent derived from the source value.
 // Indeed, `view` doesn't even need `unsafe` in its impl.
-unsafe impl<'a, 'b, 'other_data, T> StableView<'a, 'other_data, &'b T> for PointerViewKind
+unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, &'b T> for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type View = VaryingRef<Unvarying<T>>;
@@ -269,16 +278,16 @@ where
     #[inline]
     unsafe fn view<'stable>(data: &'a &'b T) -> &'stable T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         data
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultView<'_, 'other_data> for &'b T
+impl<'b, 'data, T> SetDefaultView<'_, 'data> for &'b T
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type Default = PointerViewKind;
@@ -297,9 +306,17 @@ where
 /// # Robust Guarantee
 /// The conceptual pool associated with [`PointerViewKind`] and `&'b T` is guaranteed to be
 /// nonempty for at least lifetime `'b`, but may be emptied after `'b` ends.
-unsafe impl<'b, 'other_data, T> StableClone<'_, 'other_data, &'b T> for PointerViewKind
+unsafe impl<'b, 'data, T> StableClone<'_, 'data, &'b T> for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
+    T: ?Sized + 'b,
+{}
+
+// SAFETY: Note that `&'b T`'s `Clone::clone` impl just copies it. Since the first
+// requirement is met for `Clone`, the extended first requirement is also met.
+unsafe impl<'b, 'data, T> StableCopy<'_, 'data, &'b T> for PointerViewKind
+where
+    'b: 'data,
     T: ?Sized + 'b,
 {}
 
@@ -342,10 +359,10 @@ where
 //
 // (After the `'b` lifetime parameter expires, the source `RefCell` could be dropped,
 // and that's fine.)
-unsafe impl<'a, 'b, 'other_data, T> StableView<'a, 'other_data, core::cell::Ref<'b, T>>
+unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, core::cell::Ref<'b, T>>
 for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type View = VaryingRef<Unvarying<T>>;
@@ -353,7 +370,7 @@ where
     #[inline]
     unsafe fn view<'stable>(data: &'a core::cell::Ref<'b, T>) -> &'stable T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a T = data;
@@ -368,9 +385,9 @@ where
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultView<'_, 'other_data> for core::cell::Ref<'b, T>
+impl<'b, 'data, T> SetDefaultView<'_, 'data> for core::cell::Ref<'b, T>
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type Default = PointerViewKind;
@@ -394,10 +411,10 @@ where
 //
 // (After the `'b` lifetime parameter expires, the source `RefCell` could be dropped,
 // and that's fine.)
-unsafe impl<'a, 'b, 'other_data, T> StableView<'a, 'other_data, core::cell::RefMut<'b, T>>
+unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, core::cell::RefMut<'b, T>>
 for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type View = VaryingRef<Unvarying<T>>;
@@ -405,7 +422,7 @@ where
     #[inline]
     unsafe fn view<'stable>(data: &'a core::cell::RefMut<'_, T>) -> &'stable T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a T = data;
@@ -420,9 +437,9 @@ where
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultView<'_, 'other_data> for core::cell::RefMut<'b, T>
+impl<'b, 'data, T> SetDefaultView<'_, 'data> for core::cell::RefMut<'b, T>
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type Default = PointerViewKind;
@@ -440,10 +457,10 @@ where
 //
 // (After the `'b` lifetime parameter expires, the source `RefCell` could be dropped,
 // and that's fine.)
-unsafe impl<'a, 'b, 'other_data, T> StableViewMut<'a, 'other_data, core::cell::RefMut<'b, T>>
+unsafe impl<'a, 'b, 'data, T> StableViewMut<'a, 'data, core::cell::RefMut<'b, T>>
 for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type ViewMut = VaryingRefMut<Unvarying<T>>;
@@ -451,7 +468,7 @@ where
     #[inline]
     unsafe fn view_mut<'stable>(data: &'a mut core::cell::RefMut<'b, T>) -> &'stable mut T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a mut T = data;
@@ -467,9 +484,9 @@ where
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultViewMut<'_, 'other_data> for core::cell::RefMut<'b, T>
+impl<'b, 'data, T> SetDefaultViewMut<'_, 'data> for core::cell::RefMut<'b, T>
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type DefaultMut = PointerViewKind;
@@ -481,7 +498,7 @@ where
 // ================================================================
 
 // SAFETY: The view type contains no data which could be invalidated by the three operations.
-unsafe impl<'a, 'other_data> StableView<'a, 'other_data, core::convert::Infallible>
+unsafe impl<'a, 'data> StableView<'a, 'data, core::convert::Infallible>
 for ZeroSizedViewKind
 {
     type View = core::convert::Infallible;
@@ -489,7 +506,7 @@ for ZeroSizedViewKind
     #[inline]
     unsafe fn view<'stable>(data: &'a core::convert::Infallible) -> core::convert::Infallible
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         #[expect(clippy::uninhabited_references, reason = "yeah, this function is unreachable")]
@@ -503,7 +520,7 @@ impl SetDefaultView<'_, '_> for core::convert::Infallible {
 
 // SAFETY: The mutable view type contains no data which could be invalidated by the three
 // operations.
-unsafe impl<'a, 'other_data> StableViewMut<'a, 'other_data, core::convert::Infallible>
+unsafe impl<'a, 'data> StableViewMut<'a, 'data, core::convert::Infallible>
 for ZeroSizedViewKind
 {
     type ViewMut = core::convert::Infallible;
@@ -513,7 +530,7 @@ for ZeroSizedViewKind
         data: &'a mut core::convert::Infallible,
     ) -> core::convert::Infallible
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         #[expect(clippy::uninhabited_references, reason = "yeah, this function is unreachable")]
@@ -534,6 +551,11 @@ impl SetDefaultViewMut<'_, '_> for core::convert::Infallible {
 /// `ZeroSizedViewKind` is that every value is always in one pool, which is always nonempty.
 unsafe impl StableClone<'_, '_, core::convert::Infallible> for ZeroSizedViewKind {}
 
+// SAFETY: Note that `core::convert::Infallible`'s `Clone::clone` impl has the same effect
+// as its `Copy` impl: both are unreachable.
+// Since the first requirement is met for `Clone`, the extended first requirement is also met.
+unsafe impl StableCopy<'_, '_, core::convert::Infallible> for ZeroSizedViewKind {}
+
 
 // ================================================================
 //  `option::Option`
@@ -549,10 +571,12 @@ recursive_view! {
     // SAFETY:
     // The view components of an `Option<T>` are the `0` or `1` values of type `T`.
     //
-    // - The view components of an `Option<T>` value are stored inline with no interior mutability.
+    // - The view components of an `Option<T>` value are are not wrapped in interior
+    //   mutability within `Option`.
     // - The view components of the clone of an `Option<T>` value are precisely the clones of
     //   each view component in the source `Option<T>` value. All source view components have at
     //   least one clone in the output, and each view component in the output is a clone.
+    // - Same holds for copies (as for clones).
     // - Any view components returned from `map` and `map_mut` are produced by applying the
     //   given `map` function to a view component of the source `self` value.
     unsafe impl<..> MapView<..> for Option<..> {
@@ -573,10 +597,10 @@ recursive_view! {
 
 // SAFETY: We treat `core::pin::Pin<&T>` the same as `&T`. See `&T`'s implementation above
 // for why this is sound. (The impl of `view` doesn't even use `unsafe`.)
-unsafe impl<'a, 'b, 'other_data, T> StableView<'a, 'other_data, core::pin::Pin<&'b T>>
+unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, core::pin::Pin<&'b T>>
 for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type View = VaryingRef<Unvarying<T>>;
@@ -584,16 +608,16 @@ where
     #[inline]
     unsafe fn view<'stable>(data: &'a core::pin::Pin<&'b T>) -> &'stable T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         data.get_ref()
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultView<'_, 'other_data> for core::pin::Pin<&'b T>
+impl<'b, 'data, T> SetDefaultView<'_, 'data> for core::pin::Pin<&'b T>
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type Default = PointerViewKind;
@@ -605,10 +629,20 @@ where
 /// # Robust Guarantee
 /// The conceptual pool associated with [`PointerViewKind`] and `Pin<&'b T>` is guaranteed to be
 /// nonempty for at least lifetime `'b`, but may be emptied after `'b` ends.
-unsafe impl<'b, 'other_data, T> StableClone<'_, 'other_data, core::pin::Pin<&'b T>>
+unsafe impl<'b, 'data, T> StableClone<'_, 'data, core::pin::Pin<&'b T>>
 for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
+    T: ?Sized + 'b,
+{}
+
+// SAFETY: Note that `Pin<Ptr>`'s `Clone` and `Copy` impls defer to those of `Ptr`. Therefore,
+// since `&'b T` is cloned by copying it, the same holds of `Pin<&'b T>`.
+// Since the first requirement is met for `Clone`, the extended first requirement is also met.
+unsafe impl<'b, 'data, T> StableCopy<'_, 'data, core::pin::Pin<&'b T>>
+for PointerViewKind
+where
+    'b: 'data,
     T: ?Sized + 'b,
 {}
 
@@ -629,11 +663,12 @@ recursive_view! {
     // The view components of a `Result<T, E>` are the `1` or `0` values of type `T`
     // and the `0` or `1` values of type `E`.
     //
-    // - The view components of an `Result<T, E>` value are stored inline with no interior
-    //   mutability.
+    // - The view components of an `Result<T, E>` value are are not wrapped in interior
+    //   mutability within `Result`.
     // - The view components of the clone of a `Result<T, E>` value are precisely the clones of
     //   each view component in the source `Result<T, E>` value. All source view components have at
     //   least one clone in the output, and each view component in the output is a clone.
+    // - Same holds for copies (as for clones).
     // - Any view components returned from `map` and `map_mut` are produced by applying the
     //   given `map_*` function to a view component of the source `self` value.
     unsafe impl<..> MapView<..> for Result<..> {

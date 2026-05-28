@@ -383,18 +383,17 @@ impl<'a, T: ?Sized> From<Pin<&'a mut T>> for Pin<AliasableRefMut<'a, T>> {
 // in any quantity and order on the source `Self` value will not invalidate the returned `&T` view.
 // (In fact, `AliasableRefMut` guarantees that dropping it will not invalidate views, either,
 // which is stronger than the requirement imposed by `AliasableView`.)
-unsafe impl<'a, 'b, 'other_data, T> StableView<'a, 'other_data, AliasableRefMut<'b, T>>
-for PointerViewKind
+unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, AliasableRefMut<'b, T>> for PointerViewKind
 where
     T: ?Sized + 'b,
-    'b: 'other_data,
+    'b: 'data,
 {
     type View = VaryingRef<Unvarying<T>>;
 
     #[inline]
     unsafe fn view<'stable>(data: &'a AliasableRefMut<'b, T>) -> &'stable T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a T = data;
@@ -409,10 +408,10 @@ where
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultView<'_, 'other_data> for AliasableRefMut<'b, T>
+impl<'b, 'data, T> SetDefaultView<'_, 'data> for AliasableRefMut<'b, T>
 where
     T: ?Sized + 'b,
-    'b: 'other_data,
+    'b: 'data,
 {
     type Default = PointerViewKind;
 }
@@ -422,18 +421,17 @@ where
 // and order) on the source `Self` value will not invalidate the returned `&mut T` view.
 // (In fact, `AliasableRefMut` guarantees that dropping it will not invalidate views, either, which
 // is stronger than the requirement imposed by `AliasableViewMut`.)
-unsafe impl<'a, 'b, 'other_data, T> StableViewMut<'a, 'other_data, AliasableRefMut<'b, T>>
-for PointerViewKind
+unsafe impl<'a, 'b, 'data, T> StableViewMut<'a, 'data, AliasableRefMut<'b, T>> for PointerViewKind
 where
     T: ?Sized + 'b,
-    'b: 'other_data,
+    'b: 'data,
 {
     type ViewMut = VaryingRefMut<Unvarying<T>>;
 
     #[inline]
     unsafe fn view_mut<'stable>(data: &'a mut AliasableRefMut<'b, T>) -> &'stable mut T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a mut T = data;
@@ -449,10 +447,10 @@ where
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultViewMut<'_, 'other_data> for AliasableRefMut<'b, T>
+impl<'b, 'data, T> SetDefaultViewMut<'_, 'data> for AliasableRefMut<'b, T>
 where
     T: ?Sized + 'b,
-    'b: 'other_data,
+    'b: 'data,
 {
     type DefaultMut = PointerViewKind;
 }

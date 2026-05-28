@@ -33,10 +33,10 @@ use crate::{
 //
 // (After the `'b` lifetime parameter expires, the source `Mutex` could be dropped,
 // and that's fine.)
-unsafe impl<'a, 'b, 'other_data, T> StableView<'a, 'other_data, MutexGuard<'b, T>>
+unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, MutexGuard<'b, T>>
 for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type View = VaryingRef<Unvarying<T>>;
@@ -44,7 +44,7 @@ where
     #[inline]
     unsafe fn view<'stable>(data: &'a MutexGuard<'_, T>) -> &'stable T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a T = data;
@@ -59,9 +59,9 @@ where
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultView<'_, 'other_data> for MutexGuard<'b, T>
+impl<'b, 'data, T> SetDefaultView<'_, 'data> for MutexGuard<'b, T>
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type Default = PointerViewKind;
@@ -79,10 +79,10 @@ where
 //
 // (After the `'b` lifetime parameter expires, the source `RefCell` could be dropped,
 // and that's fine.)
-unsafe impl<'a, 'b, 'other_data, T> StableViewMut<'a, 'other_data, MutexGuard<'b, T>>
+unsafe impl<'a, 'b, 'data, T> StableViewMut<'a, 'data, MutexGuard<'b, T>>
 for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type ViewMut = VaryingRefMut<Unvarying<T>>;
@@ -90,7 +90,7 @@ where
     #[inline]
     unsafe fn view_mut<'stable>(data: &'a mut MutexGuard<'b, T>) -> &'stable mut T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a mut T = data;
@@ -106,9 +106,9 @@ where
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultViewMut<'_, 'other_data> for MutexGuard<'b, T>
+impl<'b, 'data, T> SetDefaultViewMut<'_, 'data> for MutexGuard<'b, T>
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type DefaultMut = PointerViewKind;
@@ -133,10 +133,10 @@ where
 //
 // (After the `'b` lifetime parameter expires, the source `RwLock` could be dropped,
 // and that's fine.)
-unsafe impl<'a, 'b, 'other_data, T> StableView<'a, 'other_data, RwLockReadGuard<'b, T>>
+unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, RwLockReadGuard<'b, T>>
 for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type View = VaryingRef<Unvarying<T>>;
@@ -144,7 +144,7 @@ where
     #[inline]
     unsafe fn view<'stable>(data: &'a RwLockReadGuard<'b, T>) -> &'stable T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a T = data;
@@ -159,9 +159,9 @@ where
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultView<'_, 'other_data> for RwLockReadGuard<'b, T>
+impl<'b, 'data, T> SetDefaultView<'_, 'data> for RwLockReadGuard<'b, T>
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type Default = PointerViewKind;
@@ -185,10 +185,10 @@ where
 //
 // (After the `'b` lifetime parameter expires, the source `RwLock` could be dropped,
 // and that's fine.)
-unsafe impl<'a, 'b, 'other_data, T> StableView<'a, 'other_data, RwLockWriteGuard<'b, T>>
+unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, RwLockWriteGuard<'b, T>>
 for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type View = VaryingRef<Unvarying<T>>;
@@ -196,7 +196,7 @@ where
     #[inline]
     unsafe fn view<'stable>(data: &'a RwLockWriteGuard<'_, T>) -> &'stable T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a T = data;
@@ -211,9 +211,9 @@ where
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultView<'_, 'other_data> for RwLockWriteGuard<'b, T>
+impl<'b, 'data, T> SetDefaultView<'_, 'data> for RwLockWriteGuard<'b, T>
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type Default = PointerViewKind;
@@ -231,10 +231,10 @@ where
 //
 // (After the `'b` lifetime parameter expires, the source `RefCell` could be dropped,
 // and that's fine.)
-unsafe impl<'a, 'b, 'other_data, T> StableViewMut<'a, 'other_data, RwLockWriteGuard<'b, T>>
+unsafe impl<'a, 'b, 'data, T> StableViewMut<'a, 'data, RwLockWriteGuard<'b, T>>
 for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type ViewMut = VaryingRefMut<Unvarying<T>>;
@@ -242,7 +242,7 @@ where
     #[inline]
     unsafe fn view_mut<'stable>(data: &'a mut RwLockWriteGuard<'b, T>) -> &'stable mut T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a mut T = data;
@@ -258,9 +258,9 @@ where
     }
 }
 
-impl<'b, 'other_data, T> SetDefaultViewMut<'_, 'other_data> for RwLockWriteGuard<'b, T>
+impl<'b, 'data, T> SetDefaultViewMut<'_, 'data> for RwLockWriteGuard<'b, T>
 where
-    'b: 'other_data,
+    'b: 'data,
     T: ?Sized + 'b,
 {
     type DefaultMut = PointerViewKind;

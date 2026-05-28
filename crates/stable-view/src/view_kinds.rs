@@ -7,7 +7,7 @@ use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use variance_family::Unvarying;
 
-use crate::traits::{CustomView, CustomViewMut, StableClone, StableView, StableViewMut};
+use crate::traits::{CustomView, CustomViewMut, StableClone, StableCopy, StableView, StableViewMut};
 
 
 /// The view kind (or mutable view kind) chosen by a `Data` type as its default.
@@ -27,67 +27,79 @@ use crate::traits::{CustomView, CustomViewMut, StableClone, StableView, StableVi
 pub struct DefaultViewKind;
 
 /// The [`StableView::View`] chosen by a `Data` type as its default.
-pub type View<'a, 'stable, 'other_data, Data>
-    = CustomView<'a, 'stable, 'other_data, Data, DefaultViewKind>;
+pub type View<'a, 'stable, 'data, Data>
+    = CustomView<'a, 'stable, 'data, Data, DefaultViewKind>;
 
 /// The [`StableViewMut::ViewMut`] chosen by a `Data` type as its default.
-pub type ViewMut<'a, 'stable, 'other_data, Data>
-    = CustomViewMut<'a, 'stable, 'other_data, Data, DefaultViewKind>;
+pub type ViewMut<'a, 'stable, 'data, Data>
+    = CustomViewMut<'a, 'stable, 'data, Data, DefaultViewKind>;
 
 /// Choose the default view kind of the implementing type.
-pub trait SetDefaultView<'a, 'other_data> {
+///
+/// # `__ImplyBound`
+/// It is not required for soundness that `__ImpliedBound` be left at its default of
+/// `&'a &'data ()` (which implies `'data: 'a`); that bound is solely to improve
+/// the usability of this trait. (No other implied bound should be necessary.)
+pub trait SetDefaultView<'a, 'data, __ImplyBound = &'a &'data ()> {
     /// The view which [`DefaultViewKind`] will defer to for `Data = Self`.
-    type Default: StableView<'a, 'other_data, Self>;
+    type Default: StableView<'a, 'data, Self, __ImplyBound>;
 }
 
 /// Choose the default mutable view kind of the implementing type.
-pub trait SetDefaultViewMut<'a, 'other_data>: SetDefaultView<'a, 'other_data> {
+///
+/// # `__ImplyBound`
+/// It is not required for soundness that `__ImpliedBound` be left at its default of
+/// `&'a &'data ()` (which implies `'data: 'a`); that bound is solely to improve
+/// the usability of this trait. (No other implied bound should be necessary.)
+pub trait SetDefaultViewMut<
+    'a, 'data, __ImplyBound = &'a &'data (),
+>: SetDefaultView<'a, 'data, __ImplyBound> {
     /// The mutable view which [`DefaultViewKind`] will defer to for `Data = Self`.
-    type DefaultMut: StableViewMut<'a, 'other_data, Self>;
+    type DefaultMut: StableViewMut<'a, 'data, Self, __ImplyBound>;
 }
 
-// SAFETY: Since `Data::Default: StableView<'a, 'other_data, Data>`, we know that the
+// SAFETY: Since `Data::Default: StableView<'a, 'data, Data>`, we know that the
 // `'stable` data in the view returned by `Data::Default::view(data)` is not invalidated by
-// the three operations applied to `data` (up to the `'other_data` upper bound). Our `view` impl
+// the three operations applied to `data` (up to the `'data` upper bound). Our `view` impl
 // simply defers to that implementation, so our views are not invalidated by the three operations
-// (and we have the same `'other_data` upper bound).
-unsafe impl<'a, 'other_data, Data> StableView<'a, 'other_data, Data>
+// (and we have the same `'data` upper bound).
+unsafe impl<'a, 'data, Data> StableView<'a, 'data, Data>
 for DefaultViewKind
 where
-    Data: ?Sized + SetDefaultView<'a, 'other_data>,
+    Data: ?Sized + SetDefaultView<'a, 'data>,
 {
-    type View = <Data::Default as StableView<'a, 'other_data, Data>>::View;
+    type View = <Data::Default as StableView<'a, 'data, Data>>::View;
 
     #[inline]
-    unsafe fn view<'stable>(data: &'a Data) -> CustomView<'a, 'stable, 'other_data, Data, Self> {
+    unsafe fn view<'stable>(data: &'a Data) -> CustomView<'a, 'stable, 'data, Data, Self> {
         // SAFETY: The returned view can only be used at a given time if, from just after this
         // function returns until the time of use, only the three operations are performed,
-        // and if `'other_data` has not ended.
+        // and if `'data` has not ended.
         // This constraint is precisely what *our* `view` caller unsafely asserts, so this is sound.
         // In other words, we have simply forwarded the safety preconditions to the caller.
         unsafe { Data::Default::view(data) }
     }
 }
 
-// SAFETY: Since `Data::DefaultMut: StableViewMut<'a, 'other_data, Data>`, we know that the
+// SAFETY: Since `Data::DefaultMut: StableViewMut<'a, 'data, Data>`, we know that the
 // `'stable` data in the view returned by `Data::DefaultMut::view_mut(data)` is not invalidated by
-// the three operations applied to `data` (up to the `'other_data` upper bound). Our `view_mut` impl
+// the three operations applied to `data` (up to the `'data` upper bound). Our `view_mut` impl
 // simply defers to that implementation, so our views are not invalidated by the three operations
-// (and we have the same `'other_data` upper bound).
-unsafe impl<'a, 'other_data, Data> StableViewMut<'a, 'other_data, Data>
+// (and we have the same `'data` upper bound).
+unsafe impl<'a, 'data, Data> StableViewMut<'a, 'data, Data>
 for DefaultViewKind
 where
-    Data: ?Sized + SetDefaultViewMut<'a, 'other_data>,
+    Data: ?Sized + SetDefaultViewMut<'a, 'data>,
 {
-    type ViewMut = <Data::DefaultMut as StableViewMut<'a, 'other_data, Data>>::ViewMut;
+    type ViewMut = <Data::DefaultMut as StableViewMut<'a, 'data, Data>>::ViewMut;
 
     #[inline]
     unsafe fn view_mut<'stable>(
         data: &'a mut Data,
-    ) -> CustomViewMut<'a, 'stable, 'other_data, Data, Self> {
+    ) -> CustomViewMut<'a, 'stable, 'data, Data, Self> {
         // SAFETY: The returned view can only be used at a given time if, from just after this
         // function returns until the time of use, only the three operations are performed,
-        // and if `'other_data` has not ended.
+        // and if `'data` has not ended.
         // This constraint is precisely what *our* `view_mut` caller unsafely asserts, so this is
         // sound. In other words, we have simply forwarded the safety preconditions to the caller.
         unsafe { Data::DefaultMut::view_mut(data) }
@@ -106,10 +118,18 @@ where
 /// implements [`StableClone`]).
 ///
 /// [Default]: SetDefaultView::Default
-unsafe impl<'a, 'other_data, Data> StableClone<'a, 'other_data, Data>
+unsafe impl<'a, 'data, Data> StableClone<'a, 'data, Data>
 for DefaultViewKind
 where
-    Data: Clone + SetDefaultView<'a, 'other_data, Default: StableClone<'a, 'other_data, Data>>
+    Data: Clone + SetDefaultView<'a, 'data, Default: StableClone<'a, 'data, Data>>
+{}
+
+// SAFETY: Since our conceptual pool definition defers to a different `StableCopy` impl, the
+// extended first requirement must be met.
+unsafe impl<'a, 'data, Data> StableCopy<'a, 'data, Data>
+for DefaultViewKind
+where
+    Data: Copy + SetDefaultView<'a, 'data, Default: StableCopy<'a, 'data, Data>>
 {}
 
 /// A trivial view kind (or mutable view kind) whose returned views have no `'stable` references.
@@ -152,6 +172,11 @@ unsafe impl<'a, Data: ?Sized + 'a> StableViewMut<'a, '_, Data> for UnstableViewK
 // while they exist. For the third requirement, the associated pool is always nonempty, and
 // all of the `'stable` data in returned views is (vacuously) always valid.
 unsafe impl<'a, Data: Clone + 'a> StableClone<'a, '_, Data> for UnstableViewKind {}
+
+// SAFETY: The trivial pool definition used for `UnstableViewKind` and any `Data` type easily
+// satisfies the extended first requirement: all values are added to the pool, and are never removed
+// while they exist.
+unsafe impl<'a, Data: Copy + 'a> StableCopy<'a, '_, Data> for UnstableViewKind {}
 
 /// A composite view kind intended for propagating the guarantees unsafely asserted by the caller
 /// of [`StableView::view`] or [`StableViewMut::view_mut`].

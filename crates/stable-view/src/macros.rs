@@ -90,6 +90,10 @@
 ///   [`Clone::clone_from`]. To be clear, each source view component **must** have at least one
 ///   clone in the new value, and each view component in the new value must be a clone of some
 ///   view component in the source value.
+/// - If `SelfWithoutParams<.., T1, .., Tn>` implements `Copy`, then the above constraint also
+///   holds for *copying* a value of that type; that is, each source view component **must** have
+///   at least one copy in the new copy, and each view component in the new copy must be a copy
+///   of some view component in the source value.
 /// - Any view components in the `SelfWithoutParams<.., T1, .., Tn>` value returned by your `map` or
 ///   `map_mut` implementation must be values returned by some `map_i` applied to a view
 ///   component of `this` of type `Ti`. (This safety condition doesn't forbid you from naming
@@ -108,17 +112,17 @@
 /// /// `Self::WithParams<U1, .., Un>` must be `SelfWithoutParams<.., U1, .., Un>` and that
 /// /// `T1, .., Tn` are the view component parameters of `Self`.
 /// unsafe trait MapView<
-///     'a, 'stable, 'other_data,
-///     __ImpliedBounds = &'a &'stable &'other_data (),
+///     'a, 'stable, 'data,
+///     __ImpliedBounds = &'a &'stable &'data (),
 /// > {
 ///     type T1: ?Sized;
 ///     ..;
 ///     type Tn: ?Sized;
 ///
 ///     type WithParams<U1, .., Un>;
-///     // Must implement `CovariantFamily<'a, 'other_data>` such that
-///     // `Varying<'stable, 'a, 'other_data, Self::WithParamsFamily<U1, ..>>`
-///     // is `Self::WithParams<Varying<'stable, 'a, 'other_data, U1>, ..>`.
+///     // Must implement `CovariantFamily<'a, 'data>` such that
+///     // `Varying<'stable, 'a, 'data, Self::WithParamsFamily<U1, ..>>`
+///     // is `Self::WithParams<Varying<'stable, 'a, 'data, U1>, ..>`.
 ///     // Else, the code fails to compile.
 ///     type WithParamsFamily<U1, .., Un>: /* complicated trait bound */;
 ///
@@ -192,7 +196,7 @@
 ///         (T1, V1, map_1),
 ///
 ///         // After each `Vi` parameter, you can optionally include where-bounds on
-///         // `<Vi as StableView<'a, 'stable, 'other_data, Ti>>::{View, ViewMut}`.
+///         // `<Vi as StableView<'a, 'stable, 'data, Ti>>::{View, ViewMut}`.
 ///         //
 ///         // The lifetime parameters are (intentionally) not exposed to you, and you cannot access
 ///         // them due to macro hygiene. Therefore, this macro must expose these separate
@@ -298,7 +302,7 @@ macro_rules! recursive_view {
             unused_lifetimes,
             reason = "if a bound is unsatisfiable, the for<'maybe_unsat> lifetime binder \
                       means that the trait will simply never be implemented, \
-                      instead of the impossible bound causing a compilation error",
+                      instead of the impossible bound potentially causing a compilation error",
         )]
         #[expect(
             unsafe_code,
@@ -323,15 +327,15 @@ macro_rules! recursive_view {
             //
             // Thus, moves, coercions, and immutable operations (in any quantity and order) on
             // `data` do not invalidate the value returned by `data.view()`, and since we
-            // also enforce the `'other_data` upper bound, this implementation is sound.
+            // also enforce the `'data` upper bound, this implementation is sound.
             unsafe impl<
-                'a, 'other_data,
+                'a, 'data,
                 $(
                     $t,
-                    $v: $crate::StableView<'a, 'other_data, $t, $(View: $($view_bounds)*)?>,
+                    $v: $crate::StableView<'a, 'data, $t, $(View: $($view_bounds)*)?>,
                 )*
                 $($($impl_params)*)?
-            > $crate::StableView<'a, 'other_data, $($name)::+<$($($generics)*,)* $($t),*>>
+            > $crate::StableView<'a, 'data, $($name)::+<$($($generics)*,)* $($t),*>>
             for $crate::RecursiveViewKind<($($v,)*)>
             where
                 $($($where_bounds)*)?
@@ -339,12 +343,12 @@ macro_rules! recursive_view {
                 type View = $crate::__emit_if_nonempty!(if {$($($fam_name)+)?} {
                     $($($fam_name)::+)?<
                         $($($($fam_generics)*,)*)?
-                        $(<$v as $crate::StableView<'a, 'other_data, $t>>::View),*
+                        $(<$v as $crate::StableView<'a, 'data, $t>>::View),*
                     >
                 } else {
                     $($name)::+<
                         $($($generics)*,)*
-                        $(<$v as $crate::StableView<'a, 'other_data, $t>>::View),*
+                        $(<$v as $crate::StableView<'a, 'data, $t>>::View),*
                     >
                 });
 
@@ -352,11 +356,11 @@ macro_rules! recursive_view {
                 unsafe fn view<'stable>(
                     data: &'a $($name)::+<$($($generics)*,)* $($t),*>,
                 ) -> $crate::CustomView<
-                    'a, 'stable, 'other_data,
+                    'a, 'stable, 'data,
                     $($name)::+<$($($generics)*,)* $($t),*>, Self,
                 >
                 where
-                    'other_data: 'stable,
+                    'data: 'stable,
                     // We define `'a` before expanding untrusted `tt` tokens, so by macro hygiene,
                     // this mention of `'a` prevents any of them from switching out this unsafe
                     // impl.
@@ -366,7 +370,7 @@ macro_rules! recursive_view {
                     $(
                         // SAFETY: `'stable = 'a` is guaranteed to be sound.
                         let $map = |view_component| unsafe {
-                            <$v as $crate::StableView<'a, 'other_data, $t>>::view::<'a>(
+                            <$v as $crate::StableView<'a, 'data, $t>>::view::<'a>(
                                 view_component,
                             )
                         };
@@ -375,7 +379,7 @@ macro_rules! recursive_view {
                     // Rust has paired `{` and `}` delimiters, so `map_impl` can't do anything
                     // too crazy.
                     let stable_eq_a: $crate::CustomView<
-                        'a, 'a, 'other_data,
+                        'a, 'a, 'data,
                         $($name)::+<$($($generics)*,)* $($t),*>, Self,
                     > = {
                         $($map_impl)*
@@ -390,11 +394,11 @@ macro_rules! recursive_view {
                     unsafe {
                         ::core::mem::transmute::<
                             $crate::CustomView<
-                                'a, 'a, 'other_data,
+                                'a, 'a, 'data,
                                 $($name)::+<$($($generics)*,)* $($t),*>, Self,
                             >,
                             $crate::CustomView<
-                                'a, 'stable, 'other_data,
+                                'a, 'stable, 'data,
                                 $($name)::+<$($($generics)*,)* $($t),*>, Self,
                             >,
                         >(stable_eq_a)
@@ -416,19 +420,19 @@ macro_rules! recursive_view {
             //
             // Thus, moving, coercing, or performing no-ops on `data` (in any quantity and order)
             // does not invalidate the value returned by `data.view_mut()`, and since we
-            // also enforce the `'other_data` upper bound, this implementation is sound.
+            // also enforce the `'data` upper bound, this implementation is sound.
             unsafe impl<
-                'a, 'other_data,
+                'a, 'data,
                 $(
                     $t,
                     $v: $crate::StableViewMut<
-                        'a, 'other_data, $t,
+                        'a, 'data, $t,
                         $(View: $($view_bounds)*, ViewMut: $($view_bounds)*)?
                     >,
                 )*
                 $($($impl_params)*)?
             > $crate::StableViewMut<
-                'a, 'other_data,
+                'a, 'data,
                 $($name)::+<$($($generics)*,)* $($t),*>,
             >
             for $crate::RecursiveViewKind<($($v,)*)>
@@ -438,12 +442,12 @@ macro_rules! recursive_view {
                 type ViewMut = $crate::__emit_if_nonempty!(if {$($($fam_name)+)?} {
                     $($($fam_name)::+)?<
                         $($($($fam_generics)*,)*)?
-                        $(<$v as $crate::StableViewMut<'a, 'other_data, $t>>::ViewMut),*
+                        $(<$v as $crate::StableViewMut<'a, 'data, $t>>::ViewMut),*
                     >
                 } else {
                     $($name)::+<
                         $($($generics)*,)*
-                        $(<$v as $crate::StableViewMut<'a, 'other_data, $t>>::ViewMut),*
+                        $(<$v as $crate::StableViewMut<'a, 'data, $t>>::ViewMut),*
                     >
                 });
 
@@ -451,11 +455,11 @@ macro_rules! recursive_view {
                 unsafe fn view_mut<'stable>(
                     data: &'a mut $($name)::+<$($($generics)*,)* $($t),*>,
                 ) -> $crate::CustomViewMut<
-                    'a, 'stable, 'other_data,
+                    'a, 'stable, 'data,
                     $($name)::+<$($($generics)*,)* $($t),*>, Self,
                 >
                 where
-                    'other_data: 'stable,
+                    'data: 'stable,
                     // We define `'a` before expanding untrusted `tt` tokens, so by macro hygiene,
                     // this mention of `'a` prevents any of them from switching out this unsafe
                     // impl.
@@ -465,7 +469,7 @@ macro_rules! recursive_view {
                     $(
                         // SAFETY: `'stable = 'a` is guaranteed to be sound.
                         let $map = |view_component| unsafe {
-                            <$v as $crate::StableViewMut<'a, 'other_data, $t>>::view_mut::<'a>(
+                            <$v as $crate::StableViewMut<'a, 'data, $t>>::view_mut::<'a>(
                                 view_component,
                             )
                         };
@@ -474,7 +478,7 @@ macro_rules! recursive_view {
                     // Rust has paired `{` and `}` delimiters, so `map_mut_impl` can't do anything
                     // too crazy.
                     let stable_eq_a: $crate::CustomViewMut<
-                        'a, 'a, 'other_data,
+                        'a, 'a, 'data,
                         $($name)::+<$($($generics)*,)* $($t),*>, Self,
                     > = {
                         $($map_mut_impl)*
@@ -489,11 +493,11 @@ macro_rules! recursive_view {
                     unsafe {
                         ::core::mem::transmute::<
                             $crate::CustomViewMut<
-                                'a, 'a, 'other_data,
+                                'a, 'a, 'data,
                                 $($name)::+<$($($generics)*,)* $($t),*>, Self,
                             >,
                             $crate::CustomViewMut<
-                                'a, 'stable, 'other_data,
+                                'a, 'stable, 'data,
                                 $($name)::+<$($($generics)*,)* $($t),*>, Self,
                             >,
                         >(stable_eq_a)
@@ -557,16 +561,45 @@ macro_rules! recursive_view {
             // and the only non-`'static` data is in its view components, we thus have that the
             // view has not been invalidated.
             unsafe impl<
-                'a, 'other_data,
+                'a, 'data,
                 $(
                     $t: ::core::clone::Clone,
-                    $v: $crate::StableClone<'a, 'other_data, $t, $(View: $($view_bounds)*)?>,
+                    $v: $crate::StableClone<'a, 'data, $t, $(View: $($view_bounds)*)?>,
                 )*
                 $($($impl_params)*)?
-            > $crate::StableClone<'a, 'other_data, $($name)::+<$($($generics)*,)* $($t),*>>
+            > $crate::StableClone<'a, 'data, $($name)::+<$($($generics)*,)* $($t),*>>
             for $crate::RecursiveViewKind<($($v,)*)>
             where
-                for<'maybe_sat> Self: ::core::clone::Clone,
+                for<'maybe_unsat> $($name)::+<$($($generics)*,)* $($t),*>: ::core::clone::Clone,
+                // We define `'a` before expanding untrusted `tt` tokens, so by macro hygiene,
+                // this mention of `'a` prevents any of them from switching out this unsafe
+                // impl. There is still `where_bounds` below, but those bounds can't do any damage
+                // to the soundness of this code.
+                &'a ():,
+                $($($where_bounds)*)?
+            {}
+
+            #[allow(single_use_lifetimes, reason = "it's used once iff `*` repeats zero times")]
+            // SAFETY:
+            // Extended Requirement 1:
+            // The caller of this macro guarantees that copying `data` results in a new `Data`
+            // value whose view components are copies of `data`'s view components and which contain
+            // a copy of each of `data`'s view components. Therefore, the set of conceptual
+            // `StableClone` pools of the view components of `data` is the same as the set
+            // of conceptual pools of the view components of the clone of `data` (noting that
+            // `StableCopy` is implemented for each view component). By definition,
+            // the copy is in the same pool as `data`, satisfying the extended requirement 1.
+            unsafe impl<
+                'a, 'data,
+                $(
+                    $t: ::core::marker::Copy,
+                    $v: $crate::StableCopy<'a, 'data, $t, $(View: $($view_bounds)*)?>,
+                )*
+                $($($impl_params)*)?
+            > $crate::StableCopy<'a, 'data, $($name)::+<$($($generics)*,)* $($t),*>>
+            for $crate::RecursiveViewKind<($($v,)*)>
+            where
+                for<'maybe_unsat> $($name)::+<$($($generics)*,)* $($t),*>: ::core::marker::Copy,
                 // We define `'a` before expanding untrusted `tt` tokens, so by macro hygiene,
                 // this mention of `'a` prevents any of them from switching out this unsafe
                 // impl. There is still `where_bounds` below, but those bounds can't do any damage
@@ -579,17 +612,17 @@ macro_rules! recursive_view {
             $crate::__maybe_emit!(if $set_default_view_kind {
                 #[allow(single_use_lifetimes, reason = "it's used once iff `*` repeats zero times")]
                 impl<
-                    'a, 'other_data,
+                    'a, 'data: 'a,
                     $(
                         $t,
                     )*
                     $($($impl_params)*)?
-                > $crate::SetDefaultView<'a, 'other_data>
+                > $crate::SetDefaultView<'a, 'data>
                 for $($name)::+<$($($generics)*,)* $($t),*>
                 where
                     $(
                         $crate::DefaultViewKind: $crate::StableView<
-                            'a, 'other_data, $t,
+                            'a, 'data, $t,
                             $(View: $($view_bounds)*)?
                         >,
                     )*

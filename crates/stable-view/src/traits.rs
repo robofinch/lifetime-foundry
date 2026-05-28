@@ -10,21 +10,19 @@ use variance_family::{CovariantFamily, Varying};
 ///
 /// [`PointerViewKind`]: crate::view_kinds::PointerViewKind
 /// [`DefaultViewKind`]: crate::view_kinds::DefaultViewKind
-pub type CustomView<'a, 'stable, 'other_data, Data, V>
-    = Varying<'stable, 'a, &'other_data (), <V as StableView<'a, 'other_data, Data>>::View>;
+pub type CustomView<'a, 'stable, 'data, Data, V>
+    = Varying<'stable, 'a, &'data (), <V as StableView<'a, 'data, Data>>::View>;
 
 /// The [`StableViewMut::ViewMut`] associated with some `Data` and view kind (such as
 /// [`PointerViewKind`] or [`DefaultViewKind`]).
 ///
 /// [`PointerViewKind`]: crate::view_kinds::PointerViewKind
 /// [`DefaultViewKind`]: crate::view_kinds::DefaultViewKind
-pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
-    = Varying<'stable, 'a, &'other_data (), <V as StableViewMut<'a, 'other_data, Data>>::ViewMut>;
+pub type CustomViewMut<'a, 'stable, 'data, Data, V>
+    = Varying<'stable, 'a, &'data (), <V as StableViewMut<'a, 'data, Data>>::ViewMut>;
 
-/// A trait for types with temporary views that are somewhat stable.
-///
-/// The `'stable` lifetime of these views can be soundly lifetime-extended under specific
-/// conditions.
+/// A trait for types with temporary immutable/shared views whose covariant `'stable` lifetime can
+/// be soundly lifetime-extended under specific conditions.
 ///
 /// This trait is intended to be useful for self-referential types, though it might serve minor
 /// utility in some other data structures.
@@ -47,18 +45,24 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 ///
 /// `'stable` represents the lifetime of data which can be accessed longer than usual; this lifetime
 /// is the one which can be soundly (and `unsafe`ly) lifetime-extended in specific conditions.
+/// The views are required to be covariant over `'stable`.
 ///
-/// `'other_data` represents a long lifetime; all views will stop being used before `'other_data`
-/// ends.
+/// `'data` represents a long lifetime; all views will stop being used before `'data` ends.
+/// A covariant `'data` lifetime could be shortened to `'stable`, making covariant data that
+/// outlives `'data` a possible source of `'stable` data in the returned view.
 ///
 /// `Data` is the type of the source data of the view. (It is a separate parameter, rather than
 /// `Self`, in order to allow multiple kinds of views to be used on a single type, possibly
-/// including custom user-written views.)
+/// including custom user-written views.) Depending on `unsafe` details, it is a possible source
+/// of `'stable` data in the returned view.
+///
+/// Note that `'data` and `Data` do not have any direct relationship; they share a name as possible
+/// sources of `'stable` data.
 ///
 /// # Safety
-/// Where the implementor's type is `Self` and the source data type is `Data`, while `'other_data`
+/// Where the implementor's type is `Self` and the source data type is `Data`, while `'data`
 /// has not yet ended, any `'stable` data (such as `&'stable` references) in a value of type
-/// [`CustomView<'a, 'stable, 'other_data, Data, Self>`] obtained from applying `Self`'s
+/// [`CustomView<'a, 'stable, 'data, Data, Self>`] obtained from applying `Self`'s
 /// [`StableView::view`] impl to a source `Data` value must not be invalidated by applying the
 /// following three operations (in any quantity and ordering) to the source `Data` value:
 /// - moves,
@@ -83,11 +87,10 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 ///
 /// # Step-by-Step Safety Breakdown
 ///
-/// The clause about `'other_data` ending ensures that, say, `&'b T` can implement this
-/// trait with a `&'stable T` view where `'b: 'other_data`, even though the `&'stable T` may be
-/// invalidated after lifetime `'b` ends (even if the source `Data = &'b T` value is only ever
-/// moved, coerced, or accessed immutably, noting that `Copy` types are guaranteed to have no
-/// destructor to be run).
+/// The clause about `'data` ending ensures that, say, `&'b T` can implement this trait with a
+/// `&'stable T` view where `'b: 'data`, even though the `&'stable T` may be invalidated after
+/// lifetime `'b` ends (even if the source `Data = &'b T` value is only ever moved, coerced, or
+/// accessed immutably, noting that `Copy` types are guaranteed to have no destructor to be run).
 ///
 /// "The following three operations (in any quantity and ordering)" covers, for example, coercing
 /// the `Data` value to something else, performing an immutable operation on the coerced value,
@@ -138,11 +141,10 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 /// was created up to when it is used, only those three operations are performed.
 ///
 /// In particular, a returned view may be soundly lifetime-transmuted from
-/// `CustomView<'a, 'stable, 'other_data, Data, Self>` to
-/// `CustomView<'a, 's, 'other_data, Data, Self>` for any lifetime `'s` such that only those
-/// three operations are performed on the source `Data` during that lifetime `'s`, and the
-/// resulting `CustomView<'_, 's, '_, Data, Self>` value can be soundly exposed to arbitrary
-/// (sound) code, as the view would remain valid during its entire lifetime.
+/// `CustomView<'a, 'stable, 'data, Data, Self>` to `CustomView<'a, 's, 'data, Data, Self>` for any
+/// lifetime `'s` such that only those three operations are performed on the source `Data` during
+/// that lifetime `'s`, and the resulting `CustomView<'_, 's, '_, Data, Self>` value can be soundly
+/// exposed to arbitrary (sound) code, as the view would remain valid during its entire lifetime.
 ///
 /// Extending `'stable` to a fake lifetime like `'static` may be sound if you are careful to expose
 /// that view only to code aware that the lifetime annotation is a lie; in that case, the view
@@ -199,12 +201,12 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 /// Below is an analytical approach to describing this trait, though looking at the source
 /// code of this crate ([`alloc_impls.rs`] in particular) may be more helpful.
 ///
-/// Let `CustomView<'a, 'stable, 'other_data, Data, Self>` be abbreviated as `Self::View<'stable>`.
+/// Let `CustomView<'a, 'stable, 'data, Data, Self>` be abbreviated as `Self::View<'stable>`.
 ///
 /// To elaborate on what is meant by the prohibition against certain operations "invalidating"
 /// views, it must be sound to lifetime-extend the `'stable` lifetime of a `Self::View<'stable>`
 /// value and continue using it as long as operations on its source `Data` value are limited to the
-/// three stated cases (and as long as `'other_data` does not end). It suffices to ensure that:
+/// three stated cases (and as long as `'data` does not end). It suffices to ensure that:
 /// - The pointees of pointers in the `Self::View<'stable>` view which are assumed to be valid for
 ///   shared access during `'stable`, such as `&'stable T` or [`cell::Ref<'stable, T>`], are not
 ///   mutated (except inside [`UnsafeCell`]) or otherwise exclusively accessed by moves or coercions
@@ -249,19 +251,18 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 ///   For further reading, see "Yoke vs noalias", especially this comment:
 ///   <https://github.com/unicode-org/icu4x/issues/2095#issuecomment-1200095048>
 ///
-///   Types in `std` guaranteed to store data on the heap (or in a sufficiently-long-lived part
-///   of the stack) include `Vec<T>`, `String`, `Cow<'b, [T]>`, and `Cow<'b, str>` where
-///   `'b: 'other_data`.
+///   Types in `std` guaranteed to store data on the heap (or in a sufficiently-long-lived part of
+///   the stack) include `Vec<T>`, `String`, `Cow<'b, [T]>`, and `Cow<'b, str>` where `'b: 'data`.
 ///
 ///   Many Rust types like `HashMap` currently do not explicitly guarantee that they store all
 ///   their keys and values on the heap. See
 ///   <https://internals.rust-lang.org/t/could-collections-hypothetically-store-keys-and-values-inline/24195>.
 /// - Avoid returning references to data that may be on the stack, except for references valid
-///   for at least `'other_data` (which refer to data in long-lived stack frames).
+///   for at least `'data` (which refer to data in long-lived stack frames).
 ///
-///   For instance, where `'b: 'other_data`, if `Data` is similar to `&'b T` or
+///   For instance, where `'b: 'data`, if `Data` is similar to `&'b T` or
 ///   [`AliasableRefMut<'b, T>`], then views of `Data` can soundly contain references of lifetime
-///   `'b` (or other pointers guaranteed to be valid for at least lifetime `'other_data`) to that
+///   `'b` (or other pointers guaranteed to be valid for at least lifetime `'data`) to that
 ///   `T` referenced by `Data`, which can be soundly shorted to `'stable` references.
 /// - Don't check the address of `&Data` to decide whether old views of `Data` should be
 ///   invalidated. Don't try to detect whether a by-value coercion occurred (which would also
@@ -307,20 +308,20 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 /// A common pattern in implementations of [`StableView::view`] may be something like the following:
 ///
 /// ```ignore
-/// let stable_eq_a: CustomView<'a, 'a, 'other_data, Data, Self> = data;
+/// let stable_eq_a: CustomView<'a, 'a, 'data, Data, Self> = data;
 ///
 /// // SAFETY: See above the safety comment of the `unsafe impl` of `StableView`. Additionally,
 /// // the caller of `view` unsafely asserts that the returned view is only used when the source
 /// // data has only been moved or coerced (or had no-ops occur) from just after this function
 /// // returns (and, therefore, also starting from now, since we have a `&` borrow of the source
-/// // data) until the time of use, and that `'other_data` has not ended when it's used. By the same
+/// // data) until the time of use, and that `'data` has not ended when it's used. By the same
 /// // reasoning that enables the `unsafe` trait impl, we know that those uses do not invalidate
 /// // `'stable` data and that lifetime extension of the `'stable` lifetime parameter is sound. Any
 /// // further soundness concerns are the responsibility of the caller of `view`.
 /// unsafe {
 ///     transmute::<
-///         CustomView<'a, 'a, 'other_data, Data, Self>,
-///         CustomView<'a, 'stable, 'other_data, Data, Self>,
+///         CustomView<'a, 'a, 'data, Data, Self>,
+///         CustomView<'a, 'stable, 'data, Data, Self>,
 ///     >(stable_eq_a)
 /// }
 /// ```
@@ -328,16 +329,21 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 /// Instead of needing to write out a long explanation each time, just say:
 ///
 /// ```ignore
-/// let stable_eq_a: CustomView<'a, 'a, 'other_data, Data, Self> = data;
+/// let stable_eq_a: CustomView<'a, 'a, 'data, Data, Self> = data;
 ///
 /// // SAFETY: See the "`transmute` in `view` Implementation" section of the `StableView` docs.
 /// unsafe {
 ///     transmute::<
-///         CustomView<'a, 'a, 'other_data, Data, Self>,
-///         CustomView<'a, 'stable, 'other_data, Data, Self>,
+///         CustomView<'a, 'a, 'data, Data, Self>,
+///         CustomView<'a, 'stable, 'data, Data, Self>,
 ///     >(stable_eq_a)
 /// }
 /// ```
+///
+/// # `__ImplyBound`
+/// It is not required for soundness that `__ImpliedBound` be left at its default of `&'a &'data ()`
+/// (which implies `'data: 'a`); that bound is solely to improve the usability of this trait.
+/// (No other implied bound should be necessary.)
 ///
 /// # Prior Art
 ///
@@ -366,15 +372,20 @@ pub type CustomViewMut<'a, 'stable, 'other_data, Data, V>
 /// [`AliasableDeref`]: https://docs.rs/aliasable_deref_trait/1.0.0/aliasable_deref_trait/trait.AliasableDeref.html
 /// [`StableDeref`]: https://docs.rs/stable_deref_trait/1.2.1/stable_deref_trait/trait.StableDeref.html
 /// [is unsound]: https://github.com/Storyyeller/stable_deref_trait/issues/15#issuecomment-3714995546
-pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
-    /// A temporary (but somewhat stable) view of the implementing type.
-    type View: CovariantFamily<'a, &'other_data (), Is: Sized>;
+pub unsafe trait StableView<
+    'a, 'data, Data: ?Sized,
+    __ImplyBound = &'a &'data (),
+> {
+    /// A temporary view of `Data` whose covariant `'stable` lifetime can be soundly
+    /// lifetime-extended under specific conditions.
+    type View: CovariantFamily<'a, &'data (), Is: Sized>;
 
-    /// Get a temporary (but somewhat stable) view of this type.
+    /// Get a temporary view of `Data` whose covariant `'stable` lifetime can be soundly
+    /// lifetime-extended under specific conditions.
     ///
     /// # Safety
     /// The returned view must only be used under the conditions described by the below robust
-    /// guarantee. Any lifetime can be used for `'stable` between `'a` and `'other_data`, but
+    /// guarantee. Any lifetime can be used for `'stable` between `'a` and `'data`, but
     /// if `'stable` is chosen to be too long, then exposing the view to arbitrary safe Rust code
     /// could cause undefined behavior.
     ///
@@ -385,10 +396,10 @@ pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
     ///
     /// # Robust Guarantee
     /// The `'stable` lifetime of the returned view can be soundly transmuted to any lifetime
-    /// between `'a` and `'other_data`, though *using* the view might trigger undefined behavior
+    /// between `'a` and `'data`, though *using* the view might trigger undefined behavior
     /// if `'stable` is too long.
     ///
-    /// While `'other_data` has not yet ended, the returned view can be used at a given moment so
+    /// While `'data` has not yet ended, the returned view can be used at a given moment so
     /// long as, starting from when the view is returned from this function up to when it is used,
     /// only the following three operations are performed on the source `Data` value (in any
     /// quantity and ordering):
@@ -407,16 +418,14 @@ pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
     /// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html
     /// [trait-level documentation]: StableView#implications-of-safety-requirements-for-users
     #[must_use]
-    unsafe fn view<'stable>(data: &'a Data) -> CustomView<'a, 'stable, 'other_data, Data, Self>
+    unsafe fn view<'stable>(data: &'a Data) -> Varying<'stable, 'a, &'data (), Self::View>
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a;
 }
 
-/// A trait for types with temporary mutable views that are somewhat stable.
-///
-/// The `'stable` lifetime of these mutable views can be soundly lifetime-extended under specific
-/// conditions.
+/// A trait for types with temporary mutable/exclusive views whose `'stable` lifetime can be soundly
+/// lifetime-extended under specific conditions.
 ///
 /// This trait is intended to be useful for self-referential types, though it might serve minor
 /// utility in some other data structures.
@@ -429,9 +438,9 @@ pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
 /// As this trait is an extension of [`StableView`], refer to its documentation for full details.
 ///
 /// # Safety
-/// Where the implementor's type is `Self` and the source data type is `Data`, while `'other_data`
+/// Where the implementor's type is `Self` and the source data type is `Data`, while `'data`
 /// has not yet ended, any `'stable` data (such as `&'stable` references) in a value of type
-/// [`CustomViewMut<'a, 'stable, 'other_data, Data, Self>`] obtained from applying `Self`'s
+/// [`CustomViewMut<'a, 'stable, 'data, Data, Self>`] obtained from applying `Self`'s
 /// [`StableViewMut::view_mut`] impl to a source `Data` value must not be invalidated by applying
 /// the following three operations (in any quantity and ordering) to the source `Data` value:
 /// - moves,
@@ -475,21 +484,21 @@ pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
 /// following:
 ///
 /// ```ignore
-/// let stable_eq_a: CustomViewMut<'a, 'a, 'other_data, Data, Self> = data;
+/// let stable_eq_a: CustomViewMut<'a, 'a, 'data, Data, Self> = data;
 ///
 /// // SAFETY: See above the safety comment of the `unsafe impl` of `StableViewMut`.
 /// // Additionally, the caller of `view_mut` unsafely asserts that the returned view is only
 /// // used when the source data has only been moved or coerced (or had no-ops occur) from just
 /// // after this function returns (and, therefore, also starting from now, since we have a
-/// // `&mut` borrow of the source data) until the time of use, and that `'other_data` has not
+/// // `&mut` borrow of the source data) until the time of use, and that `'data` has not
 /// // ended when it's used. By the same reasoning that enables the `unsafe` trait impl, we know
 /// // that those uses do not invalidate `'stable` data and that lifetime extension of the
 /// // `'stable` lifetime parameter is sound. Any further soundness concerns are the
 /// // responsibility of the caller of `view_mut`.
 /// unsafe {
 ///     transmute::<
-///         CustomViewMut<'a, 'a, 'other_data, Data, Self>,
-///         CustomViewMut<'a, 'stable, 'other_data, Data, Self>,
+///         CustomViewMut<'a, 'a, 'data, Data, Self>,
+///         CustomViewMut<'a, 'stable, 'data, Data, Self>,
 ///     >(stable_eq_a)
 /// }
 /// ```
@@ -497,28 +506,38 @@ pub unsafe trait StableView<'a, 'other_data, Data: ?Sized> {
 /// Instead of needing to write out a long explanation each time, just say:
 ///
 /// ```ignore
-/// let stable_eq_a: CustomViewMut<'a, 'a, 'other_data, Data, Self> = data;
+/// let stable_eq_a: CustomViewMut<'a, 'a, 'data, Data, Self> = data;
 ///
 /// // SAFETY: See the "`transmute` in `view_mut` Implementation" section of the
 /// // `StableViewMut` docs.
 /// unsafe {
 ///     transmute::<
-///         CustomViewMut<'a, 'a, 'other_data, Data, Self>,
-///         CustomViewMut<'a, 'stable, 'other_data, Data, Self>,
+///         CustomViewMut<'a, 'a, 'data, Data, Self>,
+///         CustomViewMut<'a, 'stable, 'data, Data, Self>,
 ///     >(stable_eq_a)
 /// }
 /// ```
 ///
+/// # `__ImplyBound`
+/// It is not required for soundness that `__ImpliedBound` be left at its default of
+/// `&'a &'data ()` (which implies `'data: 'a`); that bound is solely to improve
+/// the usability of this trait. (No other implied bound should be necessary.)
+///
 /// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html
-pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'other_data, Data> {
-    /// A temporary (but somewhat stable) mutable view of the implementing type.
-    type ViewMut: CovariantFamily<'a, &'other_data (), Is: Sized>;
+pub unsafe trait StableViewMut<
+    'a, 'data, Data: ?Sized,
+    __ImplyBound = &'a &'data (),
+>: StableView<'a, 'data, Data, __ImplyBound> {
+    /// A temporary mutable view of `Data` whose covariant `'stable` lifetime can be soundly
+    /// lifetime-extended under specific conditions.
+    type ViewMut: CovariantFamily<'a, &'data (), Is: Sized>;
 
-    /// Get a temporary (but somewhat stable) mutable view of this type.
+    /// Get a temporary mutable view of `Data` whose covariant `'stable` lifetime can be soundly
+    /// lifetime-extended under specific conditions.
     ///
     /// # Safety
     /// The returned mutable view must only be used under the conditions described by the below
-    /// robust guarantee. Any lifetime can be used for `'stable` between `'a` and `'other_data`, but
+    /// robust guarantee. Any lifetime can be used for `'stable` between `'a` and `'data`, but
     /// if `'stable` is chosen to be too long, then exposing the view to arbitrary safe Rust code
     /// could cause undefined behavior.
     ///
@@ -529,10 +548,10 @@ pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'o
     ///
     /// # Robust Guarantee
     /// The `'stable` lifetime of the returned mutable view can be soundly transmuted to any
-    /// lifetime between `'a` and `'other_data`, though *using* the view might trigger undefined
+    /// lifetime between `'a` and `'data`, though *using* the view might trigger undefined
     /// behavior if `'stable` is too long.
     ///
-    /// While `'other_data` has not yet ended, the returned mutable view can be used at a given
+    /// While `'data` has not yet ended, the returned mutable view can be used at a given
     /// moment so long as, starting from when the mutable view is returned from this function up to
     /// when it is used, only the following three operations are performed on the source `Data`
     /// value (in any quantity and ordering):
@@ -550,9 +569,9 @@ pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'o
     #[must_use]
     unsafe fn view_mut<'stable>(
         data: &'a mut Data,
-    ) -> CustomViewMut<'a, 'stable, 'other_data, Data, Self>
+    ) -> Varying<'stable, 'a, &'data (), Self::ViewMut>
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a;
 }
 
@@ -572,8 +591,8 @@ pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'o
 /// requirements can be seen as a special case where no operations are guaranteed to increase the
 /// size of the conceptual pool.)
 ///
-/// Any consistent definition of a "conceptual pool" for a type which allows these requirements
-/// to be satisfied can be used. The definition can vary with `Self` and `Data`. The definition need
+/// Any consistent definition of a "conceptual pool" for a type which satisfies the below three
+/// requirements can be used. The definition can vary with `Self` and `Data`. The definition need
 /// not be documented, but it ideally should be, such that third-party code could also add elements
 /// to the conceptual pool. Note that a data value must be in exactly one pool at all times, and a
 /// view must be associated with exactly one pool at all times (although that pool may be empty in
@@ -596,11 +615,11 @@ pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'o
 ///
 /// Other operations, such as mutating or running the destructor of a value in the pool, *may*
 /// (but are not guaranteed to) remove a value from the conceptual pool. Likewise, the pool may
-/// (but is not guaranteed to) be emptied after `'other_data` ends.
+/// (but is not guaranteed to) be emptied after `'data` ends.
 ///
 /// ## Requirement 3
 ///
-/// The `'stable` data of a value of type [`CustomView<'a, 'stable, 'other_data, Data, Self>`]
+/// The `'stable` data of a value of type [`CustomView<'a, 'stable, 'data, Data, Self>`]
 /// obtained from applying `Self`'s [`StableView::view`] impl to some source `Data` value in the
 /// pool **must** not be invalidated so long as its source pool is nonempty.
 ///
@@ -636,10 +655,39 @@ pub unsafe trait StableViewMut<'a, 'other_data, Data: ?Sized>: StableView<'a, 'o
 /// bound is not optional might also suffice:
 /// <https://github.com/rust-lang/rust/issues/156920#issuecomment-4543098759>.
 ///
+/// # `__ImplyBound`
+/// It is not required for soundness that `__ImpliedBound` be left at its default of
+/// `&'a &'data ()` (which implies `'data: 'a`); that bound is solely to improve
+/// the usability of this trait. (No other implied bound should be necessary.)
+///
 /// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html
 /// [`mem::forget`]: core::mem::forget
 /// [`Rc`]: https://doc.rust-lang.org/std/rc/struct.Rc.html
 /// [`Arc`]: https://doc.rust-lang.org/std/sync/struct.Arc.html
 /// [`Rc::get_mut`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.get_mut
 /// [`Rc::make_mut`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.make_mut
-pub unsafe trait StableClone<'a, 'other_data, Data: Clone>: StableView<'a, 'other_data, Data> {}
+pub unsafe trait StableClone<
+    'a, 'data, Data: Clone,
+    __ImplyBound = &'a &'data (),
+>: StableView<'a, 'data, Data, __ImplyBound> {}
+
+/// Extend the conditions under which temporary views of this type may be soundly lifetime-extended
+/// (or, in the case of raw pointers, continue to be soundly accessed).
+///
+/// This trait is intended to be useful for self-referential types, and it is generally intended
+/// to be implemented for types that are reference-counted *or* provide owned "views" that are
+/// never invalidated when the source `Data` is dropped.
+///
+/// The safety requirement extends [`StableClone`], primarily for use when `Data` is a `&`
+/// reference or when the view is trivial.
+///
+/// # Safety
+///
+/// This trait extends Requirement 1 of [`StableClone`] with the following requirement: a copy of a
+/// `Data` value (produced via reliance on `Data: Copy` in some way) **must** be added to the
+/// conceptual pool which the source `Data` value is in (at the time the clone is produced),
+/// under the pool definition of `Self` and `Data`.
+pub unsafe trait StableCopy<
+    'a, 'data, Data: Copy,
+    __ImplyBound = &'a &'data (),
+>: StableClone<'a, 'data, Data, __ImplyBound> {}

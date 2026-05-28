@@ -19,6 +19,7 @@ use alloc::borrow::{Cow, ToOwned};
 
 use variance_family::{Unvarying, Varying, VaryingRef, VaryingRefMut, WithLifetime};
 
+use crate::recursive_view;
 use crate::{
     traits::{StableClone, StableView, StableViewMut},
     view_kinds::{
@@ -32,23 +33,23 @@ use crate::{
 // ================================================================
 
 // SAFETY: We basically have two separate cases (borrowed and owned). We know that the borrowed
-// branch is `&'b B`, which can provide a `&'stable B` reference since `'b: 'other_data`.
+// branch is `&'b B`, which can provide a `&'stable B` reference since `'b: 'data`.
 // The crazy-complicated trait bounds require that the owned branch has a pointer view
 // to `&'stable B`. We then just match the cases.
 //
 // By the implementation of a `StableView` for the owned branch, we know that the returned
 // `&'stable B` in the owned branch is not invalidated by the three operations applied to the
-// source `Cow::Owned(owned)` value (for at least the `'other_data` upper boudn). By the safety
+// source `Cow::Owned(owned)` value (for at least the `'data` upper boudn). By the safety
 // comment for the `StableView` impl of `&'b T` for `PointerViewKind`, the same holds for the
 // borrowed branch, though it's simpler to use the `unsafe`-free shortening of `&'b B` to
 // `&'stable B` instead of calling `view`.
-unsafe impl<'a, 'b, 'other_data, B> StableView<'a, 'other_data, Cow<'b, B>> for PointerViewKind
+unsafe impl<'a, 'b, 'data, B> StableView<'a, 'data, Cow<'b, B>> for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     B: 'b + ?Sized + ToOwned,
     Self: StableView<
-        'a, 'other_data, B::Owned,
-        View: for<'stable> WithLifetime<'stable, 'a, &'other_data (), Is = &'stable B>,
+        'a, 'data, B::Owned,
+        View: for<'stable> WithLifetime<'stable, 'a, &'data (), Is = &'stable B>,
     >,
 {
     type View = VaryingRef<Unvarying<B>>;
@@ -56,7 +57,7 @@ where
     #[inline]
     unsafe fn view<'stable>(data: &'a Cow<'b, B>) -> &'stable B
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         match data {
@@ -64,22 +65,22 @@ where
             Cow::Owned(owned) => {
                 // SAFETY: The returned view can only be used at a given time if, from just after
                 // this function returns until the time of use, only the three operations are
-                // performed, and if `'other_data` has not ended. This constraint is precisely what
+                // performed, and if `'data` has not ended. This constraint is precisely what
                 // *our* `view` caller unsafely asserts, so this is sound.
                 // In other words, we have simply forwarded the safety preconditions to the caller.
-                unsafe { <Self as StableView<'a, 'other_data, B::Owned>>::view(owned) }
+                unsafe { <Self as StableView<'a, 'data, B::Owned>>::view(owned) }
             }
         }
     }
 }
 
-impl<'a, 'b, 'other_data, B> SetDefaultView<'a, 'other_data> for Cow<'b, B>
+impl<'a, 'b, 'data, B> SetDefaultView<'a, 'data> for Cow<'b, B>
 where
-    'b: 'other_data,
+    'b: 'data,
     B: 'b + ?Sized + ToOwned,
     PointerViewKind: StableView<
-        'a, 'other_data, B::Owned,
-        View: for<'stable> WithLifetime<'stable, 'a, &'other_data (), Is = &'stable B>,
+        'a, 'data, B::Owned,
+        View: for<'stable> WithLifetime<'stable, 'a, &'data (), Is = &'stable B>,
     >,
 {
     type Default = PointerViewKind;
@@ -98,8 +99,8 @@ where
 //
 /// # Robust Guarantee
 /// The conceptual pool associated with [`PointerViewKind`] and a `Cow::Borrowed(data)` value
-/// (where `data: &'b B`) is guaranteed to be nonempty for at least lifetime `'b`, but may be e
-/// mptied after `'b` ends.
+/// (where `data: &'b B`) is guaranteed to be nonempty for at least lifetime `'b`, but may be
+/// emptied after `'b` ends.
 ///
 /// The definition of conceptual pool associated with [`PointerViewKind`] and a `Cow::Owned(data)`
 /// value (where `data: B::Owned`) is the conceptual pool definition used by the implementation
@@ -108,34 +109,34 @@ where
 ///
 /// The above two cases cover the definition of conceptual pool used by any `Cow` value with
 /// the [`PointerViewKind`] view kind.
-unsafe impl<'a, 'b, 'other_data, B> StableClone<'a, 'other_data, Cow<'b, B>> for PointerViewKind
+unsafe impl<'a, 'b, 'data, B> StableClone<'a, 'data, Cow<'b, B>> for PointerViewKind
 where
-    'b: 'other_data,
+    'b: 'data,
     B: 'b + ?Sized + ToOwned<Owned: Clone>,
     Self: StableClone<
-        'a, 'other_data, B::Owned,
-        View: for<'stable> WithLifetime<'stable, 'a, &'other_data (), Is = &'stable B>,
+        'a, 'data, B::Owned,
+        View: for<'stable> WithLifetime<'stable, 'a, &'data (), Is = &'stable B>,
     >,
 {}
 
 // SAFETY: We basically have two separate cases (borrowed and owned).
 //
 // In the borrowed case, by `VB`'s `StableView` impl for `&'b B`, we know that the views returned
-// by its returned `view` are not invalidated by the three validations (for at least `'other_data`),
+// by its returned `view` are not invalidated by the three validations (for at least `'data`),
 // and since our `view` simply returns their `view`, our impl is sound in that case.
 //
 // Likewise for the owned case, but `VB` becomes `VO` and `&'b B` becomes `B::Owned`.
-unsafe impl<'a, 'b, 'other_data, B, VB, VO> StableView<'a, 'other_data, Cow<'b, B>>
+unsafe impl<'a, 'b, 'data, B, VB, VO> StableView<'a, 'data, Cow<'b, B>>
 for RecursiveViewKind<(VB, VO)>
 where
     // Most comprehensible Rust where-bound.
     B: 'b + ?Sized + ToOwned,
-    VB: StableView<'a, 'other_data, &'b B>,
+    VB: StableView<'a, 'data, &'b B>,
     VO: StableView<
-        'a, 'other_data, B::Owned,
+        'a, 'data, B::Owned,
         View: for<'stable> WithLifetime<
-            'stable, 'a, &'other_data (),
-            Is = Varying<'stable, 'a, &'other_data (), VB::View>,
+            'stable, 'a, &'data (),
+            Is = Varying<'stable, 'a, &'data (), VB::View>,
         >,
     >,
 {
@@ -144,16 +145,16 @@ where
     #[inline]
     unsafe fn view<'stable>(
         data: &'a Cow<'b, B>,
-    ) -> Varying<'stable, 'a, &'other_data (), Self::View>
+    ) -> Varying<'stable, 'a, &'data (), Self::View>
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         match data {
             Cow::Borrowed(borrowed) => {
                 // SAFETY: The returned view can only be used at a given time if, from just after
                 // this function returns until the time of use, only the three operations are
-                // performed, and if `'other_data` has not ended. This constraint is precisely what
+                // performed, and if `'data` has not ended. This constraint is precisely what
                 // *our* `view` caller unsafely asserts, so this is sound.
                 // In other words, we have simply forwarded the safety preconditions to the caller.
                 unsafe { VB::view(borrowed) }
@@ -190,16 +191,16 @@ where
 ///
 /// The above two cases cover the definition of conceptual pool used by any `Cow` value with
 /// the `RecursiveViewKind<(VB, VO)>` view kind.
-unsafe impl<'a, 'b, 'other_data, B, VB, VO> StableClone<'a, 'other_data, Cow<'b, B>>
+unsafe impl<'a, 'b, 'data, B, VB, VO> StableClone<'a, 'data, Cow<'b, B>>
 for RecursiveViewKind<(VB, VO)>
 where
     B: 'b + ?Sized + ToOwned<Owned: Clone>,
-    VB: StableClone<'a, 'other_data, &'b B>,
+    VB: StableClone<'a, 'data, &'b B>,
     VO: StableClone<
-        'a, 'other_data, B::Owned,
+        'a, 'data, B::Owned,
         View: for<'stable> WithLifetime<
-            'stable, 'a, &'other_data (),
-            Is = Varying<'stable, 'a, &'other_data (), VB::View>,
+            'stable, 'a, &'data (),
+            Is = Varying<'stable, 'a, &'data (), VB::View>,
         >,
     >,
 {}
@@ -208,6 +209,42 @@ where
 // ================================================================
 //  `boxed::Box`
 // ================================================================
+
+/// Used to trivially pass through a view family in the syntax required by `recursive_view`.
+type TrivialFamily<T> = T;
+
+recursive_view! {
+    Variadics = [
+        (T, V, map),
+    ];
+
+    Default = false;
+
+    // SAFETY:
+    // The view component of an `Box<T>` is the value of type `T`.
+    //
+    // - The view components of a `Box<T>` value are are not wrapped in interior
+    //   mutability within `Box`.
+    // - The view components of the clone of an `Box<T>` value are precisely the clones of
+    //   each view component in the source `Box<T>` value. All source view components have at
+    //   least one clone in the output, and each view component in the output is a clone.
+    // - `Box<T>` is never `Copy`.
+    // - Any view components returned from `map` and `map_mut` are produced by applying the
+    //   given `map` function to a view component of the source `self` value.
+    unsafe impl<..> MapView<..> for Box<..>
+    where {T: ?Sized}
+    {
+        type WithParamsFamily<..> = TrivialFamily<..>;
+
+        fn map<..>(this: &Self, ..) -> _ where .. {
+            map(this)
+        }
+
+        fn map_mut<..>(this: &mut Self, ..) -> _ where .. {
+            map(this)
+        }
+    }
+}
 
 impl<'a, T: ?Sized + 'a> SetDefaultView<'a, '_> for Box<T> {
     type Default = UnstableViewKind;
@@ -222,7 +259,7 @@ impl<'a, T: ?Sized + 'a> SetDefaultViewMut<'a, '_> for Box<T> {
 //  `rc::Rc`
 // ================================================================
 
-// SAFETY: We will go through each of the three operations. The `'other_data` upper bound
+// SAFETY: We will go through each of the three operations. The `'data` upper bound
 // doesn't particularly matter in the case of the owned `Rc<T>` type.
 //
 // First, moves. Moving a `Rc<T>` necessarily does not invalidate references to its contents,
@@ -240,7 +277,7 @@ impl<'a, T: ?Sized + 'a> SetDefaultViewMut<'a, '_> for Box<T> {
 // latter was derived from an older `&mut Rc<T>` (or other `Unique`-tagged pointer) to the same
 // `Rc<T>`. However, the provenance and permissions of the `&T` derive from the `Rc<T>`'s inner
 // pointer, not from a `&mut Rc<T>` which may be used to access that inner pointer.
-unsafe impl<'a, 'other_data, T: ?Sized + 'other_data> StableView<'a, 'other_data, Rc<T>>
+unsafe impl<'a, 'data, T: ?Sized + 'data> StableView<'a, 'data, Rc<T>>
 for PointerViewKind
 {
     type View = VaryingRef<Unvarying<T>>;
@@ -248,7 +285,7 @@ for PointerViewKind
     #[inline]
     unsafe fn view<'stable>(data: &'a Rc<T>) -> &'stable T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a T = data;
@@ -263,17 +300,17 @@ for PointerViewKind
     }
 }
 
-impl<'other_data, T: ?Sized + 'other_data> SetDefaultView<'_, 'other_data> for Rc<T> {
+impl<'data, T: ?Sized + 'data> SetDefaultView<'_, 'data> for Rc<T> {
     type Default = PointerViewKind;
 }
 
-// SAFETY: We will go through each of the three operations. The `'other_data` upper bound
+// SAFETY: We will go through each of the three operations. The `'data` upper bound
 // doesn't particularly matter. As noted by `StableViewMut`, the second and third operations
 // aren't particularly noteworthy either; our `view` impl doesn't do something strange that would
 // break them while somehow still supporting the first operation.
 //
 // Then, moves. See above safety comment for `StableView` for `Rc<T>`.
-unsafe impl<'a, 'other_data, T: ?Sized + 'other_data> StableViewMut<'a, 'other_data, Rc<T>>
+unsafe impl<'a, 'data, T: ?Sized + 'data> StableViewMut<'a, 'data, Rc<T>>
 for PointerViewKind
 {
     type ViewMut = Option<VaryingRefMut<Unvarying<T>>>;
@@ -282,7 +319,7 @@ for PointerViewKind
     #[inline]
     unsafe fn view_mut<'stable>(data: &'a mut Rc<T>) -> Option<&'stable mut T>
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: Option<&'a mut T> = Rc::get_mut(data);
@@ -298,7 +335,7 @@ for PointerViewKind
     }
 }
 
-impl<'other_data, T: ?Sized + 'other_data> SetDefaultViewMut<'_, 'other_data> for Rc<T> {
+impl<'data, T: ?Sized + 'data> SetDefaultViewMut<'_, 'data> for Rc<T> {
     type DefaultMut = PointerViewKind;
 }
 
@@ -359,7 +396,7 @@ impl<'other_data, T: ?Sized + 'other_data> SetDefaultViewMut<'_, 'other_data> fo
 /// In particular, the conceptual pool associated with a view is nonempty iff the strong count is
 /// nonzero and the value (not refcounts) of the `Rc` allocation has not been mutated since the
 /// view was taken.
-unsafe impl<'other_data, T: ?Sized + 'other_data> StableClone<'_, 'other_data, Rc<T>>
+unsafe impl<'data, T: ?Sized + 'data> StableClone<'_, 'data, Rc<T>>
 for PointerViewKind
 {}
 
@@ -368,7 +405,7 @@ for PointerViewKind
 //  `string::String`
 // ================================================================
 
-// SAFETY: We will go through each of the three operations. The `'other_data` upper bound
+// SAFETY: We will go through each of the three operations. The `'data` upper bound
 // doesn't particularly matter in the case of the owned `String` type.
 //
 // First, moves. Moving a `String` does not currently invalidate references to its contents,
@@ -386,13 +423,13 @@ for PointerViewKind
 // latter was derived from an older `&mut String` (or other `Unique`-tagged pointer) to the same
 // `String`. However, the provenance and permissions of the `&str` derive from the `String`'s inner
 // pointer, not from a `&mut String` which may be used to access that inner pointer.
-unsafe impl<'a, 'other_data> StableView<'a, 'other_data, String> for PointerViewKind {
+unsafe impl<'a, 'data> StableView<'a, 'data, String> for PointerViewKind {
     type View = VaryingRef<str>;
 
     #[inline]
     unsafe fn view<'stable>(data: &'a String) -> &'stable str
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a str = data;
@@ -411,19 +448,19 @@ impl SetDefaultView<'_, '_> for String {
     type Default = PointerViewKind;
 }
 
-// SAFETY: We will go through each of the three operations. The `'other_data` upper bound
+// SAFETY: We will go through each of the three operations. The `'data` upper bound
 // doesn't particularly matter. As noted by `StableViewMut`, the second and third operations
 // aren't particularly noteworthy either; our `view` impl doesn't do something strange that would
 // break them while somehow still supporting the first operation.
 //
 // Then, moves. See above safety comment for `StableView` for `String`.
-unsafe impl<'a, 'other_data> StableViewMut<'a, 'other_data, String> for PointerViewKind {
+unsafe impl<'a, 'data> StableViewMut<'a, 'data, String> for PointerViewKind {
     type ViewMut = VaryingRefMut<str>;
 
     #[inline]
     unsafe fn view_mut<'stable>(data: &'a mut String) -> &'stable mut str
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a mut str = data;
@@ -449,7 +486,7 @@ impl SetDefaultViewMut<'_, '_> for String {
 // ================================================================
 
 // SAFETY: Same as `PointerViewKind`'s impl of `StableView` for `Rc<T>` above.
-unsafe impl<'a, 'other_data, T: ?Sized + 'other_data> StableView<'a, 'other_data, Arc<T>>
+unsafe impl<'a, 'data, T: ?Sized + 'data> StableView<'a, 'data, Arc<T>>
 for PointerViewKind
 {
     type View = VaryingRef<Unvarying<T>>;
@@ -457,7 +494,7 @@ for PointerViewKind
     #[inline]
     unsafe fn view<'stable>(data: &'a Arc<T>) -> &'stable T
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a T = data;
@@ -472,17 +509,17 @@ for PointerViewKind
     }
 }
 
-impl<'other_data, T: ?Sized + 'other_data> SetDefaultView<'_, 'other_data> for Arc<T> {
+impl<'data, T: ?Sized + 'data> SetDefaultView<'_, 'data> for Arc<T> {
     type Default = PointerViewKind;
 }
 
-// SAFETY: We will go through each of the three operations. The `'other_data` upper bound
+// SAFETY: We will go through each of the three operations. The `'data` upper bound
 // doesn't particularly matter. As noted by `StableViewMut`, the second and third operations
 // aren't particularly noteworthy either; our `view` impl doesn't do something strange that would
 // break them while somehow still supporting the first operation.
 //
 // Then, moves. See above safety comment for `StableView` for `Arc<T>`.
-unsafe impl<'a, 'other_data, T: ?Sized + 'other_data> StableViewMut<'a, 'other_data, Arc<T>>
+unsafe impl<'a, 'data, T: ?Sized + 'data> StableViewMut<'a, 'data, Arc<T>>
 for PointerViewKind
 {
     type ViewMut = Option<VaryingRefMut<Unvarying<T>>>;
@@ -491,7 +528,7 @@ for PointerViewKind
     #[inline]
     unsafe fn view_mut<'stable>(data: &'a mut Arc<T>) -> Option<&'stable mut T>
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: Option<&'a mut T> = Arc::get_mut(data);
@@ -507,7 +544,7 @@ for PointerViewKind
     }
 }
 
-impl<'other_data, T: ?Sized + 'other_data> SetDefaultViewMut<'_, 'other_data> for Arc<T> {
+impl<'data, T: ?Sized + 'data> SetDefaultViewMut<'_, 'data> for Arc<T> {
     type DefaultMut = PointerViewKind;
 }
 
@@ -524,7 +561,7 @@ impl<'other_data, T: ?Sized + 'other_data> SetDefaultViewMut<'_, 'other_data> fo
 /// In particular, the conceptual pool associated with a view is nonempty iff the strong count is
 /// nonzero and the value (not refcounts) of the `Arc` allocation has not been mutated since the
 /// view was taken.
-unsafe impl<'other_data, T: ?Sized + 'other_data> StableClone<'_, 'other_data, Arc<T>>
+unsafe impl<'data, T: ?Sized + 'data> StableClone<'_, 'data, Arc<T>>
 for PointerViewKind
 {}
 
@@ -533,7 +570,7 @@ for PointerViewKind
 //  `vec::Vec`
 // ================================================================
 
-// SAFETY: We will go through each of the three operations. The `'other_data` upper bound
+// SAFETY: We will go through each of the three operations. The `'data` upper bound
 // doesn't particularly matter in the case of the owned `Vec<T>` type.
 //
 // First, moves. Moving a `Vec<T>` does not currently invalidate references to its contents,
@@ -551,7 +588,7 @@ for PointerViewKind
 // pointer, not from a `&mut Vec<T>` which may be used to access that inner pointer.
 // TODO: Miri test; pointers are hard. I need to make sure that passing a `&mut Vec<T>` to
 // `StableView::view` doesn't cause a problem.
-unsafe impl<'a, 'other_data, T: 'other_data> StableView<'a, 'other_data, Vec<T>>
+unsafe impl<'a, 'data, T: 'data> StableView<'a, 'data, Vec<T>>
 for PointerViewKind
 {
     type View = VaryingRef<Unvarying<[T]>>;
@@ -559,7 +596,7 @@ for PointerViewKind
     #[inline]
     unsafe fn view<'stable>(data: &'a Vec<T>) -> &'stable [T]
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a [T] = data;
@@ -574,17 +611,17 @@ for PointerViewKind
     }
 }
 
-impl<'other_data, T: 'other_data> SetDefaultView<'_, 'other_data> for Vec<T> {
+impl<'data, T: 'data> SetDefaultView<'_, 'data> for Vec<T> {
     type Default = PointerViewKind;
 }
 
-// SAFETY: We will go through each of the three operations. The `'other_data` upper bound
+// SAFETY: We will go through each of the three operations. The `'data` upper bound
 // doesn't particularly matter. As noted by `StableViewMut`, the second and third operations
 // aren't particularly noteworthy either; our `view` impl doesn't do something strange that would
 // break them while somehow still supporting the first operation.
 //
 // Then, moves. See above safety comment for `StableView` for `Vec`.
-unsafe impl<'a, 'other_data, T: 'other_data> StableViewMut<'a, 'other_data, Vec<T>>
+unsafe impl<'a, 'data, T: 'data> StableViewMut<'a, 'data, Vec<T>>
 for PointerViewKind
 {
     type ViewMut = VaryingRefMut<Unvarying<[T]>>;
@@ -592,7 +629,7 @@ for PointerViewKind
     #[inline]
     unsafe fn view_mut<'stable>(data: &'a mut Vec<T>) -> &'stable mut [T]
     where
-        'other_data: 'stable,
+        'data: 'stable,
         'stable: 'a,
     {
         let stable_eq_a: &'a mut [T] = data;
@@ -608,6 +645,6 @@ for PointerViewKind
     }
 }
 
-impl<'other_data, T: 'other_data> SetDefaultViewMut<'_, 'other_data> for Vec<T> {
+impl<'data, T: 'data> SetDefaultViewMut<'_, 'data> for Vec<T> {
     type DefaultMut = PointerViewKind;
 }
