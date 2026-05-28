@@ -66,13 +66,20 @@ pub type CustomViewMut<'a, 'stable, 'data, Data, V>
 /// [`StableView::view`] impl to a source `Data` value must not be invalidated by applying the
 /// following three operations (in any quantity and ordering) to the source `Data` value:
 /// - moves,
-/// - [coercions] (which may or may not involve moves, and may read arbitrary data thanks to
-///   user-defined deref coercions),
+/// - any non-`DerefMut` [coercions] available in or before Rust 1.85 (which may or may not involve
+///   moves, and may read arbitrary data thanks to user-defined `Deref` coercions),
 /// - any (sound) operations which use data derived from the source `Data` value only through
 ///   shared/immutable `&` references to the relevant parts of `Data`. (These could be called
 ///   "immutable operations" on the source `Data` value, if not for internal mutability within
 ///   `Data`, which could escalate a `&` reference to part of `Data` to a `&mut` reference
 ///   to another part of `Data`.)
+///
+/// The "in or before Rust 1.85" qualifer is included to guard against any future user-defined
+/// coercions that could be problematic.
+///
+/// We trivially know that only those three operations are performed on the source `Data` value
+/// at least while lifetime `'a` has not ended and the view has not been discarded, during which
+/// the source `Data` value is under a `&` borrow.
 ///
 /// ## Elaboration
 ///
@@ -165,7 +172,7 @@ pub type CustomViewMut<'a, 'stable, 'data, Data, V>
 /// under certain conditions), but be cautious.
 ///
 /// (Note that [`mem::forget`] does invalidate the location of a `Data` value, but a sound
-/// implementation of this type cannot hand out views which reference data stored inline in the
+/// implementation of this trait cannot hand out views which reference data stored inline in the
 /// source `Data`; otherwise, moving a `Data` value could invalidate references in its views.
 /// [`mem::forget`] could perhaps be seen as semantically moving the `Data` value to some location
 /// that can never be accessed again.)
@@ -404,7 +411,8 @@ pub unsafe trait StableView<
     /// only the following three operations are performed on the source `Data` value (in any
     /// quantity and ordering):
     /// - moves,
-    /// - [coercions] that may or may not involve moves,
+    /// - non-`DerefMut` [coercions] among those available in Rust 1.85 (which may or may not
+    ///   involve moves),
     /// - any (sound) operations which use data derived from the source `Data` value only through
     ///   shared/immutable `&` references to the relevant parts of `Data`. (These could be called
     ///   "immutable operations" on the source `Data` value, if not for internal mutability within
@@ -444,9 +452,17 @@ pub unsafe trait StableView<
 /// [`StableViewMut::view_mut`] impl to a source `Data` value must not be invalidated by applying
 /// the following three operations (in any quantity and ordering) to the source `Data` value:
 /// - moves,
-/// - non-deref [coercions] (which may or may not involve moves, and may read inline data),
+/// - [coercions], except for `Deref` and `DerefMut` coercions, among those available in or before
+///   Rust 1.85 (which may or may not involve moves, and may read inline data),
 /// - no-ops which don't access data derived from the source `Data` value (except data derived
 ///   from the returned mutable view).
+///
+/// The "in or before Rust 1.85" qualifier is included to guard against any future coercions, which
+/// (like `Deref` and `DerefMut`) could be problematic.
+///
+/// We trivially know that only those three operations are performed on the source `Data` value
+/// at least while lifetime `'a` has not ended and the view has not been discarded, during which
+/// the source `Data` value is under an exclusive `&mut` borrow (from which the view is derived).
 ///
 /// ## Elaboration
 ///
@@ -556,7 +572,8 @@ pub unsafe trait StableViewMut<
     /// when it is used, only the following three operations are performed on the source `Data`
     /// value (in any quantity and ordering):
     /// - moves,
-    /// - non-deref [coercions] (which may or may not involve moves, and may read inline data),
+    /// - non-deref [coercions] among those available in or before Rust 1.85 (which may or may not
+    ///   involve moves, and may read inline data),
     /// - no-ops which don't access data derived from the source `Data` value (except data derived
     ///   from the returned mutable view).
     ///
@@ -575,43 +592,78 @@ pub unsafe trait StableViewMut<
         'stable: 'a;
 }
 
-/// Extend the conditions under which temporary views of this type may be soundly lifetime-extended
-/// (or, in the case of raw pointers, continue to be soundly accessed).
+/// Extend the conditions under which the `'stable` lifetimes of [`StableView`] views of this type
+/// may be soundly lifetime-extended.
 ///
-/// This trait is intended to be useful for self-referential types, and it is generally intended
-/// to be implemented for types that are reference-counted *or* provide owned "views" that are
-/// never invalidated when the source `Data` is dropped.
+/// The safety requirements are closely modeled after the behavior of [`Rc`] and [`Arc`], though
+/// other types like `()`, `&'b T` (where `'b: 'data`), and `Option<impl StableClone<'data>>` also
+/// implement `StableClone<'data>`.
 ///
-/// The safety requirements are closely modeled after the behavior of [`Rc`] and [`Arc`].
+/// # Motivation
+/// The restrictions on `'stable` data in views returned by [`StableView`] are sufficiently strict
+/// that, for [`StableView`] implementations of many types, any `'stable` data in the
+/// [`StableView`] impl's views **must** come from either a specific, known part of the relevant
+/// types, or from data that lives for at least `'data`.
+///
+/// (Note that `'a = 'stable = 'data` is possible in the [`StableView`] impl, in which case
+/// temporary `'a` references to parts of a type are the same as `'stable` references to parts of
+/// that type. This scenario doesn't contradict the motivation, since those `'stable` reference
+/// live for at least `'data`.)
+///
+/// A `Self` implementor of this trait asserts, speaking roughly, that `Self` knows all possible
+/// sources of `'stable` data obtained from views of values of type `Self`, *and* that those sources
+/// of `'stable` data are either reference-counted (or similar) or live for at least `'data`.
+///
+/// For example, `'stable` data in views of `Rc<T>` must either come from values that live for
+/// `'data` *or* from references to the `Rc<T>`'s `T` pointee. That pointee is reference-counted,
+/// so `Rc<T>` can implement `StableClone`.
+///
+/// The same holds of `Option<Rc<T>>`. Any (non-`'data`) `'stable` data must come from the pointee
+/// of a `Some(rc)`, and cloning a `Some` option clones the inner value, increasing the `Rc<T>`'s
+/// reference count; all (non-`'data`) `'stable` data in an `Option<Rc<T>>` must be, speaking
+/// somewhat roughly, reference-counted.
+///
+/// Conversely, `'stable` data in views of `AliasableBox<Rc<T>>` *could* be references to the
+/// reference-counted `T` pointee, *or* be `&'stable Rc<T>` references. The `Rc<T>` itself is
+/// *not* reference-counted, so `AliasableBox<Rc<T>>` cannot implement `StableClone`.
+///
+/// `Vec<T>` can provide a non-reference-counted `&'stable [T]`, so it likewise does not
+/// implement `StableClone`.
+///
+/// However, a `struct DoubleIndirection(AliasableBox<Rc<T>>)` which never publicly exposes
+/// a reference to its inner `Rc<T>` *could* potentially implement `StableClone`.
 ///
 /// # Safety
-/// This trait is slightly more restrictive than [`StableView`]. Instead of a single source
+/// The exact notion of "reference-counting" needs to be formalized. The definition used by this
+/// trait focuses on pools of values.
+///
+/// `StableClone` is slightly more restrictive than [`StableView`]. Instead of a single source
 /// `Data` value, there is instead a conceptual *pool* of source values, and the `'stable` data of
 /// a view must not be invalidated as long as the source pool is nonempty. ([`StableView`]'s
 /// requirements can be seen as a special case where no operations are guaranteed to increase the
-/// size of the conceptual pool.)
+/// size of the conceptual pool. Note also that `StableView`'s `Data` parameter is
+/// `StableClone`'s `Self`.)
 ///
-/// Any consistent definition of a "conceptual pool" for a type which satisfies the below three
-/// requirements can be used. The definition can vary with `Self` and `Data`. The definition need
-/// not be documented, but it ideally should be, such that third-party code could also add elements
-/// to the conceptual pool. Note that a data value must be in exactly one pool at all times, and a
-/// view must be associated with exactly one pool at all times (although that pool may be empty in
-/// the case of invalidated views).
+/// Any consistent definition of a "conceptual pool" for a `Self` type which satisfies the below
+/// three requirements can be used. The definition need not be documented, but it ideally should be,
+/// such that third-party code could also add elements to the conceptual pool. Note that a data
+/// value must be in exactly one pool at all times, and a view must be associated with exactly one
+/// pool at all times (although that pool may be empty in the case of invalidated views).
 ///
 /// ## Requirement 1
 ///
-/// A source `Data` value is always in exactly one nonempty pool, containing at least itself.
-/// (Note that *other* non-`Data` values may be in zero, one, two, or more pools.)
-/// If `Self` implements [`StableClone<'_, '_, Data>`], then a clone of a `Data` value produced
-/// via `Data`'s implementations of [`Clone::clone`] or [`Clone::clone_from`] **must** be added to
-/// the conceptual pool which the source `Data` value is in (at the time the clone is produced),
-/// under the pool definition of `Self` and `Data`.
+/// A source `Self` (or `Data`) value is always in exactly one nonempty pool, containing at least
+/// itself. (Note that *other* non-`Self` values may be in arbitrarily many pools.)
+/// A clone of a `Self` value produced via `Self`'s implementations of [`Clone::clone`] or
+/// [`Clone::clone_from`] **must** be added to the conceptual pool which the source `Self` value is
+/// in (at the time the clone is produced), under the pool definition of `Self`.
 ///
 /// ## Requirement 2
 ///
-/// Applying the three operations listed by [`StableView::view`] (moves, [coercions], and operations
-/// done through `&` references) in any quantity and ordering to a data value in the pool
-/// **must not** remove that value from the pool.
+/// Applying the three operations listed by [`StableView::view`] (moves, non-`DerefMut` [coercions]
+/// among those available in or before Rust 1.85, and operations done through `&` references) in
+/// any quantity and ordering to a `Self` value in the pool **must not** remove that value from the
+/// pool.
 ///
 /// Other operations, such as mutating or running the destructor of a value in the pool, *may*
 /// (but are not guaranteed to) remove a value from the conceptual pool. Likewise, the pool may
@@ -619,11 +671,12 @@ pub unsafe trait StableViewMut<
 ///
 /// ## Requirement 3
 ///
-/// The `'stable` data of a value of type [`CustomView<'a, 'stable, 'data, Data, Self>`]
-/// obtained from applying `Self`'s [`StableView::view`] impl to some source `Data` value in the
-/// pool **must** not be invalidated so long as its source pool is nonempty.
+/// For ***any*** view kind `V`, the `'stable` data of a value of type
+/// [`CustomView<'a, 'stable, 'data, Self, V>`] obtained from applying `V`'s impl of
+/// [`StableView<'a, 'data, Self>::view`] to some source `Self` value in the pool **must** not be
+/// invalidated so long as its source pool is nonempty and `'data` has not yet ended.
 ///
-/// Note that changing the conceptual pool to which the source `Data` value is associated (likely
+/// Note that changing the conceptual pool to which the source `Self` value is associated (likely
 /// by mutating it in some way) does not change the pool associated with the previously-produced
 /// view. A new view would be associated with that new pool, but the guaranteed validity of a view
 /// is not solely tied to its original source value under [`StableClone`]'s rules.
@@ -638,35 +691,26 @@ pub unsafe trait StableViewMut<
 /// the produced mutable view must not overlap with any of the still-valid immutable views in the
 /// pool, possibly including past immutable views of the same source value.
 ///
-/// A type can implement both [`StableClone`] and [`StableViewMut`] perhaps by having
-/// two entirely different sets of data which are accessed by `'stable` data in [`StableView`] and
-/// [`StableViewMut`], or via operations like [`Rc::get_mut`] and [`Rc::make_mut`] which do not
-/// necessarily separate the data. One sort of view might not contain any `'stable` data at all.
+/// A view kind could implement [`StableViewMut<'_, 'data, Data>`] where `Data: StableClone<'data>`
+/// perhaps by having two entirely different sets of data which are accessed by `'stable` data in
+/// [`StableView`] and [`StableViewMut`], or via operations like [`Rc::get_mut`] and
+/// [`Rc::make_mut`] which do not necessarily separate the data entirely (but do not violate
+/// aliasing rules). One sort of view might not contain any `'stable` data at all.
 ///
-/// As such, those two `unsafe` traits are not incompatible.
+/// As such, those two `unsafe` traits are not incompatible, even if they might at first seem to be.
 ///
 /// # Soundness of relying on `Clone`
 /// As seen during the stabilization of `dyn Allocator` in the standard library, a `dyn`-compatible
 /// `unsafe` trait is generally incapable of placing constraints on how a different safe trait is
 /// optionally implemented. See <https://github.com/rust-lang/rust/issues/156920> for details.
 ///
-/// Users of `StableClone` can rely on its constraints on `Data`'s implementations of the safe
-/// `Clone` trait because `StableClone` is not `dyn`-compatible and (more importantly) because the
-/// `Data: Clone` bound is not optional:
+/// Users of `StableClone` can rely on its constraints on the `Clone` trait because `StableClone`
+/// because the `Data: Clone` bound is not optional:
 /// <https://github.com/rust-lang/rust/issues/156920#issuecomment-4543098759>.
 ///
-/// # `__ImplyBound`
-/// It is not required for soundness that `__ImpliedBound` be left at its default of
-/// `&'a &'data ()` (which implies `'data: 'a`); that bound is solely to improve
-/// the usability of this trait. (No other implied bound should be necessary.)
-///
 /// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html
-/// [`mem::forget`]: core::mem::forget
 /// [`Rc`]: https://doc.rust-lang.org/std/rc/struct.Rc.html
 /// [`Arc`]: https://doc.rust-lang.org/std/sync/struct.Arc.html
 /// [`Rc::get_mut`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.get_mut
 /// [`Rc::make_mut`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.make_mut
-pub unsafe trait StableClone<
-    'a, 'data, Data: Clone,
-    __ImplyBound = &'a &'data (),
->: StableView<'a, 'data, Data, __ImplyBound> {}
+pub unsafe trait StableClone<'data>: Clone {}

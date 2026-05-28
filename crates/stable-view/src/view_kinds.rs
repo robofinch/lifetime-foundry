@@ -7,22 +7,13 @@ use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use variance_family::Unvarying;
 
-use crate::traits::{CustomView, CustomViewMut, StableClone, StableView, StableViewMut};
+use crate::traits::{CustomView, CustomViewMut, StableView, StableViewMut};
 
 
 /// The view kind (or mutable view kind) chosen by a `Data` type as its default.
 ///
 /// The behavior of this view kind should be configured via [`SetDefaultView`]
 /// and [`SetDefaultViewMut`].
-///
-/// # Robust Guarantee
-///
-/// If `Data` implements [`SetDefaultView`], then for the purposes of [`StableClone`], the
-/// definition of conceptual pools associated with this view kind and `Data` is the definition of
-/// conceptual pools used by <code><Data as [SetDefaultView]>::[Default]></code> (if the latter
-/// implements [`StableClone`]).
-///
-/// [Default]: SetDefaultView::Default
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DefaultViewKind;
 
@@ -106,34 +97,31 @@ where
     }
 }
 
-// SAFETY: Since our conceptual pool definition defers to a different `StableClone` impl, the first
-// two requirements of the definition must be met. Since our `view` impl *also* defers to that
-// same `StableClone` impl's `view` function, the third requirement must also be met.
-//
-/// # Robust Guarantee
-///
-/// If `Data` implements [`SetDefaultView`], then for the purposes of [`StableClone`], the
-/// definition of conceptual pools associated with this view kind and `Data` is the definition of
-/// conceptual pools used by <code><Data as [SetDefaultView]>::[Default]></code> (if the latter
-/// implements [`StableClone`]).
-///
-/// [Default]: SetDefaultView::Default
-unsafe impl<'a, 'data, Data> StableClone<'a, 'data, Data>
-for DefaultViewKind
-where
-    Data: Clone + SetDefaultView<'a, 'data, Default: StableClone<'a, 'data, Data>>
-{}
+/// A trivial view kind (or mutable view kind) whose returned view is always `()`.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct UnitViewKind;
+
+// SAFETY: There is no `'stable` data in the returned view; as such, it vacuously holds that
+// none of the three operations are capable of invalidating `'stable` data in the returned views.
+unsafe impl<'a, Data: ?Sized> StableView<'a, '_, Data> for UnitViewKind {
+    type View = ();
+
+    #[inline]
+    unsafe fn view<'stable: 'stable>(_data: &'a Data) {}
+}
+
+// SAFETY: There is no `'stable` data in the returned view; as such, it vacuously holds that
+// none of the three operations are capable of invalidating `'stable` data in the returned views.
+unsafe impl<'a, Data: ?Sized> StableViewMut<'a, '_, Data> for UnitViewKind {
+    type ViewMut = ();
+
+    #[inline]
+    unsafe fn view_mut<'stable: 'stable>(_data: &'a mut Data) {}
+}
 
 /// A trivial view kind (or mutable view kind) whose returned views have no `'stable` references.
 ///
 /// Its view methods are no-ops.
-///
-/// # Robust Guarantee
-///
-/// For the purposes of [`StableClone`], the definition of conceptual pools associated with
-/// [`UnstableViewKind`] and any `Data` type is as follows: all values (regardless of type) are in
-/// a single conceptual pool which is always nonempty. (In other words, all of the zero `'stable`
-/// data in unstable views is valid forever.)
 #[derive(Debug, Default, Clone, Copy)]
 pub struct UnstableViewKind;
 
@@ -158,12 +146,6 @@ unsafe impl<'a, Data: ?Sized + 'a> StableViewMut<'a, '_, Data> for UnstableViewK
         data
     }
 }
-
-// SAFETY: The trivial pool definition used for `UnstableViewKind` and any `Data` type easily
-// satisfies the first two requirements: all values are added to the pool, and are never removed
-// while they exist. For the third requirement, the associated pool is always nonempty, and
-// all of the `'stable` data in returned views is (vacuously) always valid.
-unsafe impl<'a, Data: Clone + 'a> StableClone<'a, '_, Data> for UnstableViewKind {}
 
 /// A composite view kind intended for propagating the guarantees unsafely asserted by the caller
 /// of [`StableView::view`] or [`StableViewMut::view_mut`].

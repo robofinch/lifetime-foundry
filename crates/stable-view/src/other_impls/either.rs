@@ -23,6 +23,7 @@ recursive_view! {
     ];
 
     Default = true;
+    StableClone = true;
 
     // SAFETY:
     // The view components of an `Either<L, R>` are the `1` or `0` values of type `L`
@@ -33,6 +34,9 @@ recursive_view! {
     // - The view components of the clone of a `Either<L, R>` value are precisely the clones of
     //   each view component in the source `Either<L, R>` value. All source view components have at
     //   least one clone in the output, and each view component in the output is a clone.
+    // - `'stable` data in any `StableView` view of this type must either be data valid for at
+    //   least `'data` (and be provided by the view impl, or `'a = 'stable = 'data`)
+    //   or come from a view component.
     // - Any view components returned from `map` and `map_mut` are produced by applying the
     //   given `map_*` function to a view component of the source `self` value.
     unsafe impl<..> MapView<..> for Either<..> {

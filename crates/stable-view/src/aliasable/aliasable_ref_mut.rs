@@ -33,9 +33,13 @@ use crate::{
 /// ### `&T`
 /// Any `&T` directly obtained from a value of `Self` via methods provided by this crate[^1], as
 /// well as all pointers or references derived from such a `&T`, will not be invalidated by moving
-/// that value of `Self`, by dropping it, by performing coercions (e.g., where `'long: 'short`, an
-/// `AliasableRefMut<'long, T>` may be coerced to `AliasableRefMut<'short, T>` no differently than
-/// a move), or by performing any operation on a shared reference (`&Self`) to that value.
+/// that value of `Self`, by dropping it, by performing non-`DerefMut` coercions among coercions
+/// available in or before Rust 1.85 (e.g., where `'long: 'short`, an `AliasableRefMut<'long, T>`
+/// may be coerced to `AliasableRefMut<'short, T>` no differently than a move), or by performing
+/// any operation on a shared reference (`&Self`) to that value.
+///
+/// The "in or before Rust 1.85" qualifier guards against any future coercions, which could, like
+/// `DerefMut`, be problematic.
 ///
 /// In particular, calling any methods of `AliasableRefMut` on that value of `Self` which take the
 /// value as an owned `Self` argument or an exclusively borrowed `&mut Self` argument may
@@ -51,9 +55,13 @@ use crate::{
 /// ### `&mut T`
 /// Any `&mut T` directly obtained from a value of `Self` via methods provided by this crate[^1], as
 /// well as all pointers or references derived from such a `&mut T`, will not be invalidated by
-/// moving that value of `Self`, by dropping it, by performing coercions (e.g., where
-/// `'long: 'short`, an `AliasableRefMut<'long, T>` may be coerced to `AliasableRefMut<'short, T>`
-/// no differently than a move), or by performing no-ops on it.
+/// moving that value of `Self`, by dropping it, by performing non-deref coercions available
+/// in or before Rust 1.85 (e.g., where `'long: 'short`, an `AliasableRefMut<'long, T>` may be
+/// coerced to `AliasableRefMut<'short, T>` no differently than a move), or by performing no-ops on
+/// it.
+///
+/// The "in or before Rust 1.85" qualifier guards against any future coercions, which could, like
+/// `Deref` and `DerefMut`, be problematic.
 ///
 /// In particular, calling any methods of `AliasableRefMut` on that value of `Self` (whether owned
 /// or referenced) may invalidate such pointers and references (or allow safe code to later
@@ -124,8 +132,8 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     /// A `&T` obtained directly from `Self` through the intended means, and any pointers or
     /// references derived from that `&T`, derives from `self.ptr` (or a moved-to or moved-from
     /// version of `self.ptr`, if any retagging occurs when a raw pointer is moved). Moves of
-    /// `Self` (and coercions) do not retag such pointers and references in a problematic way.
-    /// Dropping an `AliasableRefMut` may assert exclusive access over the `NonNull` field (but
+    /// `Self` (and permitted coercions) do not retag such pointers and references in a problematic
+    /// way. Dropping an `AliasableRefMut` may assert exclusive access over the `NonNull` field (but
     /// that's not transitive, and does not invalidate other pointers to its pointee) and is
     /// otherwise a no-op. No operation writes through `self.ptr` (or a pointer derived from it)
     /// when accessed through a `&Self` value; third-party `unsafe` code is explicitly warned
@@ -138,8 +146,8 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     /// A `&mut T` obtained directly from `Self` through the intended means, and any pointers or
     /// references derived from that `&mut T`, derives from `self.ptr` (or a moved-to or moved-from
     /// version of `self.ptr`, if any retagging occurs when a raw pointer is moved). Moves of
-    /// `Self` (and coercions) do not retag such pointers and references in a problematic way.
-    /// Dropping an `AliasableRefMut` may assert exclusive access over the `NonNull` field (but
+    /// `Self` (and permitted coercions) do not retag such pointers and references in a problematic
+    /// way. Dropping an `AliasableRefMut` may assert exclusive access over the `NonNull` field (but
     /// that's not transitive, and does not invalidate other pointers to its pointee) and is
     /// otherwise a no-op. All other operations are allowed to invalidate such references, so
     /// methods of `AliasableRefMut` taking `Self`, `&Self`, or `&mut Self` arguments can read or
@@ -147,9 +155,9 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     /// guarantee.
     ///
     /// ### Stable view traits
-    /// - [`StableView`] only prohibits the application of moves, coercions, and immutable
-    ///   operations in any quantity and order to a `Self` value from invalidating pointers or
-    ///   references derived from a call to [`StableView::view`] on that `Self` value
+    /// - [`StableView`] only prohibits the application of moves, non-`DerefMut` coercions, and
+    ///   immutable operations in any quantity and order to a `Self` value from invalidating
+    ///   pointers or references derived from a call to [`StableView::view`] on that `Self` value
     ///   (which converts `self.ptr` into a `&T`), and permits the view to be invalidated once
     ///   lifetime parameters of the implementing type expire.
     ///
@@ -157,9 +165,9 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     ///   those which convert `self.ptr` to a `&mut T`, and functions which take `&Self` arguments
     ///   are not permitted to do that. Once lifetime `'a` expires, references to the pointee
     ///   of `self.ptr` might be invalidated through other means, which is fine.
-    /// - [`StableViewMut`] only prohibits moves, coercions, and no-ops (in any quantity and order)
-    ///   on a `Self` value from invalidating pointers or references derived from a call to
-    ///   [`StableViewMut::view_mut`] on that `Self` value, and permits the view to be
+    /// - [`StableViewMut`] only prohibits moves, non-deref coercions, and no-ops (in any quantity
+    ///   and order) on a `Self` value from invalidating pointers or references derived from a call
+    ///   to [`StableViewMut::view_mut`] on that `Self` value, and permits the view to be
     ///   invalidated once lifetime parameters of the implementing type expire.
     ///
     ///   Moving a `NonNull` does not trigger any problematic exclusive retag, so that condition is
@@ -211,11 +219,11 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     ///     be used. Those pointers only have shared permissions over the pointee of `self.ptr` for
     ///     lifetime at most `'a`. Additionally, the returned reference (and pointers derived from
     ///     it) is allowed to be used for some lifetime `'d` (possibly longer than `'c`) such that
-    ///     `'a: 'd` and the value of `self` is only moved, dropped, coerced, or immutably accessed
-    ///     during `'d` (else, the returned reference would be potentially invalidated, as per our
-    ///     documentation), which does not permit references (or pointers) with write permissions
-    ///     over the pointee of `self.ptr` to be constructed from `self` (except via the returned
-    ///     reference).
+    ///     `'a: 'd` and the value of `self` is only moved, dropped, immutably coerced, or immutably
+    ///     accessed during `'d` (else, the returned reference would be potentially invalidated, as
+    ///     per our documentation), which does not permit references (or pointers) with write
+    ///     permissions over the pointee of `self.ptr` to be constructed from `self` (except via the
+    ///     returned reference).
     ///
     ///     Therefore, while the returned reference (and references or pointers derived from it)
     ///     is live, no pointers or references not derived from the returned reference (whether
@@ -240,9 +248,10 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     ///     be used to access the pointee of `self.ptr`. The returned reference (and pointers
     ///     derived from it) is allowed to be used for some lifetime `'d` (possibly longer than
     ///     `'c`) such that `'a: 'd` and the value of `self` is only moved, dropped, or coerced
-    ///     during `'d` (else, the returned reference would be potentially invalidated, as per our
-    ///     documentation), which does not permit references (or pointers) that alias the pointee
-    ///     of `self.ptr` to be constructed from `self` (except via the returned reference).
+    ///     (except via derefs) during `'d` (else, the returned reference would be potentially
+    ///     invalidated, as per our documentation), which does not permit references (or pointers)
+    ///     that alias the pointee of `self.ptr` to be constructed from `self` (except via the
+    ///     returned reference).
     ///
     ///     Therefore, while the returned reference (and references or pointers derived from it)
     ///     is live, no pointers or references not derived from the returned reference (whether
@@ -379,8 +388,9 @@ impl<'a, T: ?Sized> From<Pin<&'a mut T>> for Pin<AliasableRefMut<'a, T>> {
 }
 
 // SAFETY: By the aliasing guarantee of `AliasableRefMut` for `&T` references obtained from
-// `Deref::deref` (among other methods), performing moves, coercions, or immutable operations
-// in any quantity and order on the source `Self` value will not invalidate the returned `&T` view.
+// `Deref::deref` (among other methods), performing moves, non-`DerefMut` coercions, or immutable
+// operations in any quantity and order on the source `Self` value will not invalidate the returned
+// `&T` view.
 // (In fact, `AliasableRefMut` guarantees that dropping it will not invalidate views, either,
 // which is stronger than the requirement imposed by `AliasableView`.)
 unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, AliasableRefMut<'b, T>> for PointerViewKind
@@ -417,8 +427,8 @@ where
 }
 
 // SAFETY: By the aliasing guarantee of `AliasableRefMut` for `&mut T` references obtained from
-// `DerefMut::deref_mut` (among other methods), performing moves or coercions (in any quantity
-// and order) on the source `Self` value will not invalidate the returned `&mut T` view.
+// `DerefMut::deref_mut` (among other methods), performing moves or non-deref coercions (in any
+// quantity and order) on the source `Self` value will not invalidate the returned `&mut T` view.
 // (In fact, `AliasableRefMut` guarantees that dropping it will not invalidate views, either, which
 // is stronger than the requirement imposed by `AliasableViewMut`.)
 unsafe impl<'a, 'b, 'data, T> StableViewMut<'a, 'data, AliasableRefMut<'b, T>> for PointerViewKind

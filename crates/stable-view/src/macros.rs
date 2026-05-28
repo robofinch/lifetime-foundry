@@ -12,9 +12,9 @@
 
 
 /// Utility for implementing [`StableView`], [`StableViewMut`], and [`StableClone`]
-/// for [`RecursiveViewKind`] in cases similar to `Option<T>`, `Box<T>`, `[T; N]`, or
-/// `(T1, .., Tn)`.
+/// in cases similar to `Option<T>`, `Box<T>`, `[T; N]`, or `(T1, .., Tn)`.
 ///
+/// [`RecursiveViewKind`] is used for [`StableView`] and [`StableViewMut`].
 /// Optionally, [`DefaultViewKind`] is set to use [`RecursiveViewKind`] for the data type.
 ///
 /// # Motivation
@@ -27,11 +27,15 @@
 /// # Robust Guarantee about Conceptual Pools
 /// Suppose `Data = SelfWithoutParams<.., T1, .., Tn>`.
 ///
-/// When `Data: Clone` and each `Vi: StableClone<'_, '_, Ti>` (in addition to any other
-/// where-bounds provided by you), this macro implements `StableClone<'_, '_, Data>` for
-/// `RecursiveViewKind<(V1, .., Vn)>`, and sets the definition of the conceptual pool associated
-/// with `RecursiveViewKind<(V1, .., Vn)>` and a `data: Data` value as the set of all values of
-/// some `SelfWithoutParams<.., U1, .., Un>` type (or any other type reachable via coercions of
+/// When
+/// - `StableClone = true` is set in this macro's input,
+/// - each `Ti` implements `StableClone<'data>`,
+/// - `Data: Clone`, and
+/// - all other where-bounds provided by you hold,
+///
+/// this macro implements `StableClone<'data>` for `Data`, and sets the definition of the
+/// conceptual pool associated with `Data` to the set of all values of some
+/// `SelfWithoutParams<.., U1, .., Un>` (or any other type reachable via coercions of
 /// `SelfWithoutParams<.., U1, .., Un>` values) whose view components' set of conceptual pools is
 /// equal to the set of conceptual pools of `data`'s view components.
 /// (See below for what "view components" are.)
@@ -39,13 +43,13 @@
 /// Put more simply: the conceptual pool is the intersection of `data`'s view components'
 /// conceptual pools. Two `Data` values are in the same conceptual pool if their view components
 /// are in the same conceptual pools (in any order, with any multiplicity). This definition ensures
-/// that `data` is in one (and exactly one) conceptual pool at any given time. A view's associated
-/// pool is the (fixed) conceptual pool which its source `Data` value was in at the time of its
-/// creation.
+/// that each `Data` value is in one (and exactly one) conceptual pool at any given time. A view's
+/// associated pool is the (fixed) conceptual pool which its source `Data` value was in at the time
+/// of its creation.
 ///
-/// This definition of conceptual pool is also referenced by [`RecursiveViewKind`] as the
-/// *standard* definition of conceptual pool for that view kind. Users of this macro *robustly*
-/// guarantee that this standard definition is used, such that `unsafe` code can rely on it.
+/// Users of this macro *robustly* guarantee that this standard definition is used, such that
+/// `unsafe` code could rely on it. It would therefore be a breaking change to switch the
+/// pool definition, so be careful if you stop using this macro.
 ///
 /// # Terminology
 /// Where `Self` is the implementing type, let `SelfWithoutParams` be the type path of `Self`,
@@ -84,12 +88,22 @@
 ///   type is fine, thus the final "within `Self`" qualifier. (If `Self` has a public safe
 ///   constructor, then the caller of this macro cannot prevent someone from creating a
 ///   `Mutex<Self>` anyway, for example.)
-/// - Cloning a value of type `SelfWithoutParams<.., T1, .., Tn>` must result in a new value whose
-///   view components are the clones of the source value's view components. "cloning" (and "clones")
-///   refers to the application of (and values produced from) [`Clone::clone`] and
-///   [`Clone::clone_from`]. To be clear, each source view component **must** have at least one
-///   clone in the new value, and each view component in the new value must be a clone of some
-///   view component in the source value.
+/// - If `StableClone = true` is set in this macro's input, then cloning a value of type
+///   `SelfWithoutParams<.., T1, .., Tn>` must result in a new value whose view components are the
+///   clones of the source value's view components. "cloning" (and "clones") refers to the
+///   application of (and values produced from) [`Clone::clone`] and [`Clone::clone_from`]. To be
+///   clear, each source view component **must** have at least one clone in the new value, and each
+///   view component in the new value must be a clone of some view component in the source value.
+/// - If `StableClone = true` is set in this macro's input, then `'stable` data in ***any***
+///   `StableView` view of this type must either be data valid for at least `'data` or come from a
+///   view component. For clarity, giving a `'stable` reference *to a view component* is NOT
+///   permitted; it being possible for a view component to give out a `'stable` reference to part
+///   of that view component is what is permitted.
+///
+///   For example, `Box<T>` sets `StableClone = false`, because even though it currently
+///   seems like it'd be impossible to soundly hand out a `&'stable T` from a `Box<T>`, a future
+///   version of Rust might remove `Box`'s `noalias` semantics. See [`StableClone`] for more details
+///   and examples.
 /// - Any view components in the `SelfWithoutParams<.., T1, .., Tn>` value returned by your `map` or
 ///   `map_mut` implementation must be values returned by some `map_i` applied to a view
 ///   component of `this` of type `Ti`. (This safety condition doesn't forbid you from naming
@@ -123,6 +137,7 @@
 ///     type WithParamsFamily<U1, .., Un>: /* complicated trait bound */;
 ///
 ///     const SET_DEFAULT_TO_RECURSIVE_VIEW_KIND: bool;
+///     const STABLE_CLONE: bool;
 ///
 ///     /// Apply some mapping to `this`'s view components, obtaining a new value with the mapped
 ///     /// view components.
@@ -204,6 +219,10 @@
 ///     // Either `Default = true;` or `Default = false;`. Determines whether
 ///     // `SetDefaultView` and `SetDefaultViewMut` are implemented (to choose `DefaultViewKind`).
 ///     Default = true;
+///     // `'stable` data either comes from the `T1` or `T2` view components, or from `'static` data
+///     // (which certainly outlives `'data`). Only the implementing type matters, so we only
+///     // need to consider `'a = 'static` and `V: 'static` when making this judgement.
+///     StableClone = true;
 ///
 ///     // `Upper: UpperBound, T1, .., Tn` impl parameters are included automatically.
 ///     // To place bounds on any of the `Ti` parameters, use where-bounds.
@@ -275,6 +294,7 @@ macro_rules! recursive_view {
         ];
 
         Default = $set_default_view_kind:ident;
+        StableClone = $stable_clone:ident;
 
         unsafe impl<..$(, {$($impl_params:tt)*})?> MapView<..>
         for $($name:ident)::+<$({$($generics:tt)*},)* ..>
@@ -295,12 +315,6 @@ macro_rules! recursive_view {
         const _: () = unsafe { $crate::__macro::unsafe_recursive_view() };
 
         #[expect(
-            unused_lifetimes,
-            reason = "if a bound is unsatisfiable, the for<'maybe_unsat> lifetime binder \
-                      means that the trait will simply never be implemented, \
-                      instead of the impossible bound potentially causing a compilation error",
-        )]
-        #[expect(
             unsafe_code,
             reason = "lint is moved to `unsafe_recursive_view` for a clearer error message",
         )]
@@ -312,17 +326,17 @@ macro_rules! recursive_view {
             // from calling `.view()` on view components of `data`.
             // (This fact is a mixture of reasoning about the below impl and about the safety
             // requirements of this macro.)
-            // Moves (or coercions, or immutable operations on) `data` (in any quantity and order)
-            // can move (or coerce, or perform immutable operations on) its view components,
-            // but since the view kinds are here required to implement `StableView` for those
-            // view components (and since code injection is prevented), that does not invalidate
-            // their views.
+            // Moves (or permitted coercions, or immutable operations on) `data` (in any
+            // quantity and order) can move (or coerce, or perform immutable operations on) its
+            // view components, but since the view kinds are here required to implement `StableView`
+            // for those view components (and since code injection is prevented), that does not
+            // invalidate their views.
             // (Note that we use the fact that performing immutable operations on `data` cannot
             // perform mutable operations on its view components; this is why we forbade internal
             // mutability.)
             //
-            // Thus, moves, coercions, and immutable operations (in any quantity and order) on
-            // `data` do not invalidate the value returned by `data.view()`, and since we
+            // Thus, moves, permitted coercions, and immutable operations (in any quantity and
+            // order) on `data` do not invalidate the value returned by `data.view()`, and since we
             // also enforce the `'data` upper bound, this implementation is sound.
             unsafe impl<
                 'a, 'data,
@@ -409,13 +423,13 @@ macro_rules! recursive_view {
             // produced from calling `.view_mut()` on view components of `data`.
             // (This fact is a mixture of reasoning about the below impl and about the safety
             // requirements of this macro.)
-            // Moving (or coercing, or performing no-ops on) `data` (in any quantity and order) can
-            // move (or coerce, or perform no-ops on) its view components, but since they are here
-            // required to implement `StableViewMut` (and since code injection is prevented), that
-            // does not invalidate their views.
+            // Moving (or permitted coercing, or performing no-ops on) `data` (in any quantity and
+            // order) can move (or coerce, or perform no-ops on) its view components, but since
+            // they are here required to implement `StableViewMut` (and since code injection is
+            // prevented), that does not invalidate their views.
             //
-            // Thus, moving, coercing, or performing no-ops on `data` (in any quantity and order)
-            // does not invalidate the value returned by `data.view_mut()`, and since we
+            // Thus, moving, permitted coercing, or performing no-ops on `data` (in any quantity
+            // and order) does not invalidate the value returned by `data.view_mut()`, and since we
             // also enforce the `'data` upper bound, this implementation is sound.
             unsafe impl<
                 'a, 'data,
@@ -501,79 +515,94 @@ macro_rules! recursive_view {
                 }
             }
 
-            /// # Robust Guarantee
-            /// The conceptual pool definition given by [`stable_view::recursive_view`] is used.
-            ///
-            /// [`stable_view::recursive_view`]: https://docs.rs/stable-view/0/stable_view/macro.recursive_view.html
-            #[allow(single_use_lifetimes, reason = "it's used once iff `*` repeats zero times")]
-            // SAFETY:
-            // Let `Data` refer to `$($name)::+<$($($generics)*,)* $($t),*>`, a.k.a.
-            // `SelfWithoutParams<.., T1, .., Tn>`.
-            // We can define the conceptual pool associated with a `data: Data` value as the set of
-            // all values of some `SelfWithoutParams<.., U1, .., Un>` type (or any other type
-            // reachable via coercions of `SelfWithoutParams<.., U1, .., Un>` values) whose view
-            // components' set of conceptual pools is equal to the set of conceptual pools of
-            // `data`'s view components.
-            //
-            // ...That definition is long. Put more simply: we're basically taking the intersection
-            // of `data`'s view components' conceptual pools. Two `Data` values are in the same
-            // conceptual pool if their view components are in the same conceptual pools (in
-            // any order, with any multiplicity). This definition ensures that `data` is in one
-            // (and exactly one) conceptual pool at any given time. A view's associated pool is
-            // the (fixed) conceptual pool which its source `Data` value was in at the time of its
-            // creation.
-            //
-            // Requirement 1:
-            // The caller of this macro guarantees that cloning `data` results in a new `Data`
-            // value whose view components are clones of `data`'s view components and which contain
-            // a clone of each of `data`'s view components. Therefore, the set of conceptual
-            // `StableClone` pools of the view components of `data` is the same as the set
-            // of conceptual pools of the view components of the clone of `data`. By definition,
-            // the clone is in the same pool as `data`, satisfying requirement 1.
-            //
-            // Requirement 2:
-            // Only the view components of `data` determine which pool it's in, so we need only
-            // care about the impact of moves, coercions, and immutable operations on `data`'s
-            // view components. Moves (or coercions, or immutable operations on) `data`
-            // (in any quantity and order) can move (or coerce, or perform immutable operations on)
-            // its view components, and since the view kinds are here required to implement
-            // `StableClone` for the view components (and since code injection is prevented), that
-            // does not change which pools they are in.
-            // (Note that we use the fact that performing immutable operations on `data` cannot
-            // perform mutable operations on its view components; this is why we forbade internal
-            // mutability.)
-            //
-            // Thus, moves, coercions, and immutable operations (in any quantity and order) on
-            // `data` do not change which pool `data` is in.
-            //
-            // Requirement 3:
-            // If the conceptual pool associated with a view returned by `data.view()` is nonempty,
-            // then there exists some value of type `Data` (or formerly of type `Data` before
-            // coercions) whose view components are in the same pools as the view components
-            // which were in `data` at the time the view was made. Each of the view
-            // components in `data.view()` came from view components in `data` at the time the view
-            // was made, so the associated pools of the view components of `data.view()` are all
-            // therefore nonempty. Since the `'static` data in the view cannot be invalidated
-            // and the only non-`'static` data is in its view components, we thus have that the
-            // view has not been invalidated.
-            unsafe impl<
-                'a, 'data,
-                $(
-                    $t: ::core::clone::Clone,
-                    $v: $crate::StableClone<'a, 'data, $t, $(View: $($view_bounds)*)?>,
-                )*
-                $($($impl_params)*)?
-            > $crate::StableClone<'a, 'data, $($name)::+<$($($generics)*,)* $($t),*>>
-            for $crate::RecursiveViewKind<($($v,)*)>
-            where
-                for<'maybe_unsat> $($name)::+<$($($generics)*,)* $($t),*>: ::core::clone::Clone,
-                // We define `'a` before expanding untrusted `tt` tokens, so by macro hygiene,
-                // this mention of `'a` prevents any of them from switching out this unsafe
-                // impl. There is still `where_bounds` below, but those bounds can't do any damage
-                // to the soundness of this code.
-                &'a ():,
-                $($($where_bounds)*)?
-            {}
+            $crate::__maybe_emit!(if $stable_clone {
+                /// # Robust Guarantee
+                /// The conceptual pool definition given by [`stable_view::recursive_view`] is used.
+                ///
+                /// [`stable_view::recursive_view`]: https://docs.rs/stable-view/0/stable_view/macro.recursive_view.html
+                #[allow(single_use_lifetimes, reason = "it's used once iff `*` repeats zero times")]
+                #[expect(
+                    unused_lifetimes,
+                    reason = "if a bound is unsatisfiable, the for<'maybe_unsat> lifetime binder \
+                            means that the trait will simply never be implemented, instead of the \
+                            impossible bound potentially causing a compilation error",
+                )]
+                // SAFETY:
+                // Let `Data` refer to `$($name)::+<$($($generics)*,)* $($t),*>`, a.k.a.
+                // `SelfWithoutParams<.., T1, .., Tn>`.
+                // We can define the conceptual pool associated with a `data: Data` value as the set
+                // of all values of some `SelfWithoutParams<.., U1, .., Un>` type (or any other type
+                // reachable via coercions of `SelfWithoutParams<.., U1, .., Un>` values) whose view
+                // components' set of conceptual pools is equal to the set of conceptual pools of
+                // `data`'s view components.
+                //
+                // ...That definition is long. Put more simply: we're basically taking the
+                // intersection of `data`'s view components' conceptual pools. Two `Data` values are
+                // in the same conceptual pool if their view components are in the same conceptual
+                // pools (in any order, with any multiplicity). This definition ensures that `data`
+                // is in one (and exactly one) conceptual pool at any given time. A view's
+                // associated pool is the (fixed) conceptual pool which its source `Data` value was
+                // in at the time of its creation.
+                //
+                // Requirement 1:
+                // The caller of this macro guarantees that cloning `data` results in a new `Data`
+                // value whose view components are clones of `data`'s view components and which
+                // contain a clone of each of `data`'s view components. Therefore, the set of
+                // conceptual `StableClone` pools of the view components of `data` is the same as
+                // the set of conceptual pools of the view components of the clone of `data`. By
+                // definition, the clone is in the same pool as `data`, satisfying requirement 1.
+                //
+                // Requirement 2:
+                // Only the view components of `data` determine which pool it's in, so we need only
+                // care about the impact of moves, non-`DerefMut` coercions, and immutable
+                // operations on `data`'s view components. Moves (or permitted coercions, or
+                // immutable operations on) `data` (in any quantity and order) can move (or coerce,
+                // or perform immutable operations on) its view components, and since the view
+                // components are here required to implement `StableClone`(and since code injection
+                // is prevented), that does not change which pools they are in.
+                // (Note that we use the fact that performing immutable operations on `data` cannot
+                // perform mutable operations on its view components; this is why we forbade internal
+                // mutability.)
+                //
+                // Thus, moves, permitted coercions, and immutable operations (in any quantity and
+                // order) on `data` do not change which pool `data` is in.
+                //
+                // Requirement 3:
+                // If, for any view kind `V`, the conceptual pool associated with a view returned
+                // by `V::view(&data)` is nonempty, then there exists some value of type `Data` (or
+                // formerly of type `Data` before coercions) whose view components are in the same
+                // pools as the view components which were in `data` at the time the view was made.
+                // Therefore, each of those pools are nonempty.
+                //
+                // Since we require each view component to implement `StableClone`, the individual
+                // pools being nonempty implies that `'stable` data derived from each view component
+                // has not yet been invalidated (while `'data` has not yet ended).
+                //
+                // In this branch where `StableClone = true` was set in the macro's inputs, the
+                // caller asserted that `'stable` data in ***any*** `StableView` view of this type
+                // must either be data valid for at least `'data` or come from a view component.
+                //
+                // Therefore, while `'data` has not ended and the conceptual pool associated with
+                // a view returned by  `V::view(&data)` is nonempty, neither the `'data` data nor
+                // view components' `'stable` data could be invalidated, in which case none of the
+                // `'stable` data in that view could be invalidated.
+                unsafe impl<
+                    'data,
+                    $(
+                        $t: $crate::StableClone<'data>,
+                    )*
+                    $($($impl_params)*)?
+                > $crate::StableClone<'data> for $($name)::+<$($($generics)*,)* $($t),*>
+                where
+                    for<'maybe_unsat> $($name)::+<$($($generics)*,)* $($t),*>: ::core::clone::Clone,
+                    // We define `'data` before expanding untrusted `tt` tokens, so by macro hygiene,
+                    // this mention of `'data` prevents any of them from switching out this unsafe
+                    // impl. There is still `where_bounds` below, but those bounds can't do any damage
+                    // to the soundness of this code.
+                    &'data ():,
+                    $($($where_bounds)*)?
+                {}
+            });
 
             // This isn't an `unsafe impl`, so `tt` code injection does not matter.
             $crate::__maybe_emit!(if $set_default_view_kind {

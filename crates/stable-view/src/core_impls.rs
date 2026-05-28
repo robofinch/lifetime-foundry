@@ -47,6 +47,7 @@ recursive_view! {
     ];
 
     Default = true;
+    StableClone = true;
 
     // SAFETY:
     // The view components of a `[T; N]` are the `N` values of type `T`.
@@ -56,6 +57,9 @@ recursive_view! {
     // - The view components of the clone of a `[T; N]` value are precisely the clones of
     //   each view component in the source `[T; N]` value. All source view components have at least
     //   one clone in the output, and each view component in the output is a clone.
+    // - `'stable` data in any `StableView` view of this type must either be data valid for at
+    //   least `'data` (and be provided by the view impl, or `'a = 'stable = 'data`)
+    //   or come from a view component.
     // - Any view components returned from `map` and `map_mut` are produced by applying the
     //   given `map` function to a view component of the source `self` value.
     unsafe impl<.., {const N: usize}> MapView<..> for Array<{N}, ..> {
@@ -92,6 +96,7 @@ macro_rules! aliasable_tuple {
                 ];
 
                 Default = true;
+                StableClone = true;
 
                 // SAFETY:
                 // The view components of a `(T1, .., Tn)` are the `n` values of types
@@ -103,6 +108,9 @@ macro_rules! aliasable_tuple {
                 //   each view component in the source tuple. All source view components have at
                 //   least one clone in the output, and each view component in the output is a
                 //   clone.
+                // - `'stable` data in any `StableView` view of this type must either be data valid
+                //   for at least `'data` (and be provided by the view impl, or
+                //   `'a = 'stable = 'data`) or come from a view component.
                 // - Any view components returned from `map` and `map_mut` are produced by
                 //   applying the given `Ti` map function to a view component of the source `self`
                 //   value.
@@ -183,6 +191,7 @@ recursive_view! {
     Variadics = [];
 
     Default = false;
+    StableClone = true;
 
     // SAFETY:
     // Essentially, `()` has no data, so its `()` "views" cannot be invalidated no matter what we
@@ -195,6 +204,8 @@ recursive_view! {
     //   each view component in the source unit tuple. All zero source view components have at
     //   least one clone in the output, and each of the zero view components in the output is a
     //   clone.
+    // - `'stable` data in any `StableView` view of this type must be data valid for at least
+    //   `'data` (and be provided by the view impl, or `'a = 'stable = 'data`).
     // - Any of the zero view components returned from `map` and `map_mut` are produced by
     //   applying the given `Ti` map function to a view component of the source `self`
     //   value, where `1 <= i <= n == 0`.
@@ -242,15 +253,6 @@ impl SetDefaultViewMut<'_, '_> for () {
     type DefaultMut = ZeroSizedViewKind;
 }
 
-// SAFETY: The below definition trivially satisfies the first and second requirements.
-// The third requirement is trivially satisfied because the view type contains no data, so it
-// cannot ever be invalidated.
-//
-/// # Robust Guarantee
-/// The definition of conceptual pool associated with the data type `()` and view kind
-/// `ZeroSizedViewKind` is that every value is always in one pool, which is always nonempty.
-unsafe impl StableClone<'_, '_, ()> for ZeroSizedViewKind {}
-
 
 // ================================================================
 //  `&T`
@@ -297,9 +299,9 @@ where
 // for at least lifetime `'b` (and what happens after that does not matter).
 //
 /// # Robust Guarantee
-/// The conceptual pool associated with [`PointerViewKind`] and `&'b T` is guaranteed to be
-/// nonempty for at least lifetime `'b`, but may be emptied after `'b` ends.
-unsafe impl<'b, 'data, T> StableClone<'_, 'data, &'b T> for PointerViewKind
+/// The conceptual pool associated with `&'b T` is guaranteed to be nonempty for at least lifetime
+/// `'b`, but may be emptied after `'b` ends.
+unsafe impl<'b, 'data, T> StableClone<'data> for &'b T
 where
     'b: 'data,
     T: ?Sized + 'b,
@@ -337,7 +339,8 @@ where
 // - Moving the `Ref` does not invalidate immutable references to its `T` referent, since the `T`
 //   referent is stored elsewhere (in a `RefCell`) and `cell::Ref` is expected to alias other
 //   shared references (and thus does not assert `noalias` when moved),
-// - Coercing the `Ref` does not invalidate its `T` referent for the same reasons above and below,
+// - Coercing the `Ref` (via Rust 1.85 coercions) does not invalidate its `T` referent for the same
+//   reasons above and below,
 // - No sound immutable operation on the `Ref` can invalidate shared references to the `T` referent;
 //   otherwise, that could invalidate other references obtained from other shared
 //   references to the same `Ref`.
@@ -389,7 +392,8 @@ where
 // - Moving the `RefMut` does not invalidate immutable references to its `T` referent, because a
 //   `RefMut` argument doesn't hold exclusivity for its whole scope, only until it drops; therefore,
 //   it cannot have `Box`'s `noalias` semantics.
-// - Coercing the `RefMut` does not invalidate its `T` referent for the same reason above.
+// - Coercing the `RefMut` (except via `DerefMut`, among Rust 1.85 coercions) does not invalidate
+//   its `T` referent for the same reason above.
 // - No sound immutable operation on the `RefMut` can invalidate shared references to the `T`
 //   referent; otherwise, that could invalidate other references obtained from other shared
 //   references to the same `RefMut`.
@@ -436,8 +440,8 @@ where
 // - Moving the `RefMut` does not invalidate immutable references to its `T` referent, because a
 //   `RefMut` argument doesn't hold exclusivity for its whole scope, only until it drops; therefore,
 //   it cannot have `Box`'s `noalias` semantics.
-// - Coercing the `RefMut` does not invalidate its `T` referent for the same reason above, noting
-//   that the referent is not stored inline.
+// - Coercing the `RefMut` (except via derefs, among Rust 1.85 coercions) does not invalidate its
+//   `T` referent for the same reason above, noting that the referent is not stored inline.
 // - No-ops on the source data value are fine.
 //
 // (After the `'b` lifetime parameter expires, the source `RefCell` could be dropped,
@@ -532,9 +536,9 @@ impl SetDefaultViewMut<'_, '_> for core::convert::Infallible {
 // cannot ever be invalidated.
 //
 /// # Robust Guarantee
-/// The definition of conceptual pool associated with the data type `Infallible` and view kind
-/// `ZeroSizedViewKind` is that every value is always in one pool, which is always nonempty.
-unsafe impl StableClone<'_, '_, core::convert::Infallible> for ZeroSizedViewKind {}
+/// The definition of conceptual pool associated with the data type `Infallible` is that every
+/// value is always in one pool, which is always nonempty.
+unsafe impl StableClone<'_> for core::convert::Infallible {}
 
 
 // ================================================================
@@ -547,6 +551,7 @@ recursive_view! {
     ];
 
     Default = true;
+    StableClone = true;
 
     // SAFETY:
     // The view components of an `Option<T>` are the `0` or `1` values of type `T`.
@@ -556,6 +561,9 @@ recursive_view! {
     // - The view components of the clone of an `Option<T>` value are precisely the clones of
     //   each view component in the source `Option<T>` value. All source view components have at
     //   least one clone in the output, and each view component in the output is a clone.
+    // - `'stable` data in any `StableView` view of this type must either be data valid for at
+    //   least `'data` (and be provided by the view impl, or `'a = 'stable = 'data`)
+    //   or come from a view component.
     // - Any view components returned from `map` and `map_mut` are produced by applying the
     //   given `map` function to a view component of the source `self` value.
     unsafe impl<..> MapView<..> for Option<..> {
@@ -606,10 +614,9 @@ where
 // for why this is sound.
 //
 /// # Robust Guarantee
-/// The conceptual pool associated with [`PointerViewKind`] and `Pin<&'b T>` is guaranteed to be
+/// The conceptual pool associated with `Pin<&'b T>` is guaranteed to be
 /// nonempty for at least lifetime `'b`, but may be emptied after `'b` ends.
-unsafe impl<'b, 'data, T> StableClone<'_, 'data, core::pin::Pin<&'b T>>
-for PointerViewKind
+unsafe impl<'b, 'data, T> StableClone<'data> for core::pin::Pin<&'b T>
 where
     'b: 'data,
     T: ?Sized + 'b,
@@ -627,6 +634,7 @@ recursive_view! {
     ];
 
     Default = true;
+    StableClone = true;
 
     // SAFETY:
     // The view components of a `Result<T, E>` are the `1` or `0` values of type `T`
@@ -637,6 +645,9 @@ recursive_view! {
     // - The view components of the clone of a `Result<T, E>` value are precisely the clones of
     //   each view component in the source `Result<T, E>` value. All source view components have at
     //   least one clone in the output, and each view component in the output is a clone.
+    // - `'stable` data in any `StableView` view of this type must either be data valid for at
+    //   least `'data` (and be provided by the view impl, or `'a = 'stable = 'data`)
+    //   or come from a view component.
     // - Any view components returned from `map` and `map_mut` are produced by applying the
     //   given `map_*` function to a view component of the source `self` value.
     unsafe impl<..> MapView<..> for Result<..> {

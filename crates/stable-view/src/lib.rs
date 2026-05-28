@@ -61,7 +61,7 @@ pub use self::{
     traits::{CustomView, CustomViewMut, StableClone, StableView, StableViewMut},
     view_kinds::{
         CollectionViewKind, DefaultViewKind, PointerViewKind, RecursiveViewKind, SetDefaultView,
-        SetDefaultViewMut, UnstableViewKind, View, ViewMut, ZeroSizedViewKind,
+        SetDefaultViewMut, UnitViewKind, UnstableViewKind, View, ViewMut, ZeroSizedViewKind,
     },
 };
 #[cfg(feature = "alloc")]

@@ -32,6 +32,35 @@ use crate::{
 //  `borrow::Cow`
 // ================================================================
 
+// SAFETY: We are essentially deferring to the `StableClone` impl for either `&'b B` or `B::Owned`.
+// Note that `Cow<'b, B>: Clone` even when `B: ToOwned + !Clone`,
+// but when `B: Clone`, the `Clone` impl of `Cow` either:
+// - copies the `&'b B` in a `Cow::Borrowed`
+//   (which is the same as `&'b B`'s impl of `Clone::clone`), or
+// - `Clone::clone`s the `B::Owned` in a `Cow::Owned`.
+//
+// Note that the three requirements, when `B::Owned: StableClone<'_>`, are clearly satisfied in
+// *either* the `Cow::Borrowed` or `Cow::Owned` cases. Additionally, operations done through `&`
+// references to parts of a `Cow` value are *entirely incapable* of switching the owned/borrowed
+// state of that `Cow` value, since `Cow` is an enum, and the enum discriminant is not internally
+// mutable.
+//
+/// # Robust Guarantee
+/// The conceptual pool associated with a `Cow::Borrowed(data)` value (where `data: &'b B`) is
+/// guaranteed to be nonempty for at least lifetime `'b`, but may be emptied after `'b` ends.
+///
+/// The definition of conceptual pool associated with a `Cow::Owned(data)` value (where
+/// `data: B::Owned`) is the conceptual pool definition used by the implementation
+/// of `StableClone<'data>` for `B::Owned`. In other words, the conceptual pool
+/// definition for `Cow::Owned` is simply deferred to `B::Owned`.
+///
+/// The above two cases cover the definition of conceptual pool used by any `Cow` value.
+unsafe impl<'b, 'data, B> StableClone<'data> for Cow<'b, B>
+where
+    'b: 'data,
+    B: 'b + ?Sized + ToOwned<Owned: StableClone<'data>>,
+{}
+
 // SAFETY: We basically have two separate cases (borrowed and owned). We know that the borrowed
 // branch is `&'b B`, which can provide a `&'stable B` reference since `'b: 'data`.
 // The crazy-complicated trait bounds require that the owned branch has a pointer view
@@ -86,39 +115,6 @@ where
     type Default = PointerViewKind;
 }
 
-// SAFETY: We are essentially deferring to the `PointerViewKind` impl of `StableClone` for
-// either `&'b B` or `B::Owned`. Note that `Cow<'b, B>: Clone` even when `B: ToOwned + !Clone`,
-// but when `B: Clone`, the `Clone` impl of `Cow` either:
-// - copies (so, `Clone::clone`s) the `&'b B` in a `Cow::Borrowed`, or
-// - `Clone::clone`s the `B::Owned` in a `Cow::Owned`.
-// Since our `view` impl is deferred in the same way, this impl is correct.
-// More rigorously, note that the three requirements are clearly satisfied in *either* the
-// `Cow::Borrowed` or `Cow::Owned` cases. Additionally, operations done through `&` references
-// to parts of a `Cow` value are *entirely incapable* of switching the owned/borrowed state of that
-// `Cow` value, since `Cow` is an enum, and the enum discriminant is not internally mutable.
-//
-/// # Robust Guarantee
-/// The conceptual pool associated with [`PointerViewKind`] and a `Cow::Borrowed(data)` value
-/// (where `data: &'b B`) is guaranteed to be nonempty for at least lifetime `'b`, but may be
-/// emptied after `'b` ends.
-///
-/// The definition of conceptual pool associated with [`PointerViewKind`] and a `Cow::Owned(data)`
-/// value (where `data: B::Owned`) is the conceptual pool definition used by the implementation
-/// of `StableClone<'_, '_, B::Owned>` for `PointerViewKind`. In other words, the conceptual pool
-/// definition for `Cow::Owned` is simply deferred to `B::Owned`.
-///
-/// The above two cases cover the definition of conceptual pool used by any `Cow` value with
-/// the [`PointerViewKind`] view kind.
-unsafe impl<'a, 'b, 'data, B> StableClone<'a, 'data, Cow<'b, B>> for PointerViewKind
-where
-    'b: 'data,
-    B: 'b + ?Sized + ToOwned<Owned: Clone>,
-    Self: StableClone<
-        'a, 'data, B::Owned,
-        View: for<'stable> WithLifetime<'stable, 'a, &'data (), Is = &'stable B>,
-    >,
-{}
-
 // SAFETY: We basically have two separate cases (borrowed and owned).
 //
 // In the borrowed case, by `VB`'s `StableView` impl for `&'b B`, we know that the views returned
@@ -167,44 +163,6 @@ where
     }
 }
 
-// SAFETY: We are essentially deferring to either the `VB` impl of `StableClone` for `&'b B` or
-// the `VO` impl of `StableClone` for `B::Owned`. Note that `Cow<'b, B>: Clone` even when
-// `B: ToOwned + !Clone`, but when `B: Clone`, the `Clone` impl of `Cow` either:
-// - copies (so, `Clone::clone`s) the `&'b B` in a `Cow::Borrowed`, or
-// - `Clone::clone`s the `B::Owned` in a `Cow::Owned`.
-// Since our `view` impl is deferred in the same way, this impl is correct.
-// More rigorously, note that the three requirements are clearly satisfied in *either* the
-// `Cow::Borrowed` or `Cow::Owned` cases. Additionally, operations done through `&` references
-// to parts of a `Cow` value are *entirely incapable* of switching the owned/borrowed state of that
-// `Cow` value, since `Cow` is an enum, and the enum discriminant is not internally mutable.
-//
-/// # Robust Guarantee
-/// The definition of conceptual pool associated with `RecursiveViewKind<(VB, VO)>` and a
-/// `Cow::Borrowed(data)` value (where `data: &'b B`) is the conceptual pool definition used by the
-/// implementation of `StableClone<'_, '_, &'b B>` for `VB`. In other words, the conceptual pool
-/// definition for `Cow::Borrowed` is simply deferred to the one associated with `VB` and `&'b B`.
-///
-/// The definition of conceptual pool associated with `RecursiveViewKind<(VB, VO)>` and a
-/// `Cow::Owned(data)` value (where `data: B::Owned`) is the conceptual pool definition used by the
-/// implementation of `StableClone<'_, '_, B::Owned>` for `VO`. In other words, the conceptual pool
-/// definition for `Cow::Owned` is simply deferred to the one associated with `VO` and `B::Owned`.
-///
-/// The above two cases cover the definition of conceptual pool used by any `Cow` value with
-/// the `RecursiveViewKind<(VB, VO)>` view kind.
-unsafe impl<'a, 'b, 'data, B, VB, VO> StableClone<'a, 'data, Cow<'b, B>>
-for RecursiveViewKind<(VB, VO)>
-where
-    B: 'b + ?Sized + ToOwned<Owned: Clone>,
-    VB: StableClone<'a, 'data, &'b B>,
-    VO: StableClone<
-        'a, 'data, B::Owned,
-        View: for<'stable> WithLifetime<
-            'stable, 'a, &'data (),
-            Is = Varying<'stable, 'a, &'data (), VB::View>,
-        >,
-    >,
-{}
-
 
 // ================================================================
 //  `boxed::Box`
@@ -219,15 +177,15 @@ recursive_view! {
     ];
 
     Default = false;
+    StableClone = false;
 
     // SAFETY:
     // The view component of an `Box<T>` is the value of type `T`.
     //
     // - The view components of a `Box<T>` value are are not wrapped in interior
     //   mutability within `Box`.
-    // - The view components of the clone of an `Box<T>` value are precisely the clones of
-    //   each view component in the source `Box<T>` value. All source view components have at
-    //   least one clone in the output, and each view component in the output is a clone.
+    // - `StableClone` is not set to `true`.
+    // - `StableClone` is not set to `true`.
     // - Any view components returned from `map` and `map_mut` are produced by applying the
     //   given `map` function to a view component of the source `self` value.
     unsafe impl<..> MapView<..> for Box<..>
@@ -266,7 +224,8 @@ impl<'a, T: ?Sized + 'a> SetDefaultViewMut<'a, '_> for Box<T> {
 // one `Rc` left, then mutable methods can invalidate references to its contents, but moves
 // cannot execute conditional logic.)
 //
-// Second, coercions. As noted by `StableView`, it should be covered by the first and third cases.
+// Second, non-`DerefMut` coercions (among Rust 1.85 coercions). As noted by `StableView`, it
+// should be covered by the first and third cases.
 //
 // Third, operations done to data derived from parts of `Rc<T>` only through `&` references. Since
 // `Rc<T>` doesn't wrap its `T` contents in internal mutability (though its refcounts are
@@ -368,36 +327,37 @@ impl<'data, T: ?Sized + 'data> SetDefaultViewMut<'_, 'data> for Rc<T> {
 // allocation and do not mutate its value. Therefore, the three operations leave the data value
 // in the same pool.
 //
-// Requirement 3: If the source pool of a `&'stable T` view of an `Rc<T>` is nonempty, then the
-// `Rc` allocation has a nonzero strong count and its `T` value (not refcounts) has not been mutated
-// since the view was taken. Therefore, `&` references to that `T` value have not been invalidated
-// by the `Rc` allocation being deallocated (which can only happen after the strong count reaches
-// zero) or by mutations.
+// Requirement 3: If the source pool of a view of an `Rc<T>` is nonempty, then the `Rc` allocation
+// has a nonzero strong count and its `T` value (not refcounts) has not been mutated since the view
+// was taken. Therefore, `&` references to that `T` value have not been invalidated by the `Rc`
+// allocation being deallocated (which can only happen after the strong count reaches zero) or by
+// mutations.
 //
 // See also `String` and `Vec` about how the provenance of the `&Rc<T>` used to obtain a
-// `&'stable T` does not matter; only the provenance of the inner pointer of the `Rc<T>` affects
-// the created `&'stable T`, and that inner pointer has sufficient provenance for e.g. the
-// guarantees made by `Rc::as_ptr`. That is, the provenance of the `&'stable T` reference is not
-// unexpectedly invalidated by the source `Rc<T>` being dropped or mutated; only the above
-// considerations about the `Rc` allocation matter.
+// `&'stable T` (or a `'stable` borrow of part of the `T`) does not matter; only the provenance of
+// the inner pointer of the `Rc<T>` affects the created `&'stable T` (or smaller `'stable` borrow),
+// and that inner pointer has sufficient provenance for e.g. the guarantees made by `Rc::as_ptr`.
+// That is, the provenance of a `&'stable T` reference (or smaller borrow) is not unexpectedly
+// invalidated by the source `Rc<T>` being dropped or mutated; only the above considerations about
+// the `Rc` allocation matter.
 //
-// Therefore, the `&'stable T` obtained via `<Rc<T> as Deref>::deref` in our `view` implementation
-// remains valid if its source pool is nonempty.
+// All `'stable` data in a `StableView` view of an `Rc<T>` must either be valid for at least
+// `'data` or borrow part or all of the `Rc<T>`'s `T` pointee. By the above reasoning, we know that
+// `&'stable T` references to (or `'stable` borrows to smaller parts of) the `Rc<T>`'s `T` pointee
+// remain valid if its source pool is nonempty.
 //
 /// # Robust Guarantee
-/// The conceptual pool associated with an `Rc<T>` value and the `PointerViewKind` view kind is
-/// the set of all (semantic) owners of a strong ref of the `Rc` allocation (possibly including
-/// `Rc<U>` values from unsizing coercions, custom types that share strong ref ownership in
-/// interesting ways, or custom types that hold more than one strong ref), *except*, if the `T`
-/// value (not refcounts) of the `Rc` allocation is mutated, then all data values in the pool are
-/// considered to be transferred over to a new pool (while the previous pool is left empty).
+/// The conceptual pool associated with an `Rc<T>` value is the set of all (semantic) owners of a
+/// strong ref of the `Rc` allocation (possibly including `Rc<U>` values from unsizing coercions,
+/// custom types that share strong ref ownership in interesting ways, or custom types that hold more
+/// than one strong ref), *except*, if the `T` value (not refcounts) of the `Rc` allocation is
+/// mutated, then all data values in the pool are considered to be transferred over to a new pool
+/// (while the previous pool is left empty).
 ///
 /// In particular, the conceptual pool associated with a view is nonempty iff the strong count is
 /// nonzero and the value (not refcounts) of the `Rc` allocation has not been mutated since the
 /// view was taken.
-unsafe impl<'data, T: ?Sized + 'data> StableClone<'_, 'data, Rc<T>>
-for PointerViewKind
-{}
+unsafe impl<T: ?Sized> StableClone<'_> for Rc<T> {}
 
 
 // ================================================================
@@ -413,7 +373,8 @@ for PointerViewKind
 // same reason as `Vec<T>`, it is *very* unlikely that moving a `String` will ever invalidate
 // references to its contents: https://github.com/rust-lang/rfcs/pull/3712#issuecomment-3715013712
 //
-// Second, coercions. As noted by `StableView`, it should be covered by the first and third cases.
+// Second, non-`DerefMut` coercions (among Rust 1.85 coercions). As noted by `StableView`, it
+// should be covered by the first and third cases.
 //
 // Third, operations done to data derived from parts of `String` only through `&` references. Since
 // `String` doesn't use internal mutability, operations done on shared references to part or all of
@@ -547,22 +508,20 @@ impl<'data, T: ?Sized + 'data> SetDefaultViewMut<'_, 'data> for Arc<T> {
     type DefaultMut = PointerViewKind;
 }
 
-// SAFETY: Same as that of `PointerViewKind`'s `StableClone` impl for `Rc<T>` above.
+// SAFETY: Same as that of `Rc<T>`'s impl of `StableClone` above.
 //
 /// # Robust Guarantee
-/// The conceptual pool associated with an `Arc<T>` value and the `PointerViewKind` view kind is
-/// the set of all (semantic) owners of a strong ref of the `Arc` allocation (possibly including
-/// `Arc<U>` values from unsizing coercions, custom types that share strong ref ownership in
-/// interesting ways, or custom types that hold more than one strong ref), *except*, if the `T`
-/// value (not refcounts) of the `Arc` allocation is mutated, then all data values in the pool are
-/// considered to be transferred over to a new pool (while the previous pool is left empty).
+/// The conceptual pool associated with an `Arc<T>` value is the set of all (semantic) owners of a
+/// strong ref of the `Arc` allocation (possibly including `Arc<U>` values from unsizing coercions,
+/// custom types that share strong ref ownership in interesting ways, or custom types that hold more
+/// than one strong ref), *except*, if the `T` value (not refcounts) of the `Arc` allocation is
+/// mutated, then all data values in the pool are considered to be transferred over to a new pool
+/// (while the previous pool is left empty).
 ///
 /// In particular, the conceptual pool associated with a view is nonempty iff the strong count is
 /// nonzero and the value (not refcounts) of the `Arc` allocation has not been mutated since the
 /// view was taken.
-unsafe impl<'data, T: ?Sized + 'data> StableClone<'_, 'data, Arc<T>>
-for PointerViewKind
-{}
+unsafe impl<T: ?Sized> StableClone<'_> for Arc<T> {}
 
 
 // ================================================================
@@ -576,7 +535,8 @@ for PointerViewKind
 // and that is *very* unlikely to ever change, due to concern about breaking existing code making
 // it "out of the question": https://github.com/rust-lang/rfcs/pull/3712#issuecomment-3715013712
 //
-// Second, coercions. As noted by `StableView`, it should be covered by the first and third cases.
+// Second, non-`DerefMut` coercions (among Rust 1.85 coercions). As noted by `StableView`, it
+// should be covered by the first and third cases.
 //
 // Third, operations done to data derived from parts of `Vec<T>` only through `&` references. Since
 // `Vec<T>` doesn't use internal mutability, operations done on shared references to part or all of
