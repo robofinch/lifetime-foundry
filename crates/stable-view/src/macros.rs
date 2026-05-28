@@ -90,10 +90,6 @@
 ///   [`Clone::clone_from`]. To be clear, each source view component **must** have at least one
 ///   clone in the new value, and each view component in the new value must be a clone of some
 ///   view component in the source value.
-/// - If `SelfWithoutParams<.., T1, .., Tn>` implements `Copy`, then the above constraint also
-///   holds for *copying* a value of that type; that is, each source view component **must** have
-///   at least one copy in the new copy, and each view component in the new copy must be a copy
-///   of some view component in the source value.
 /// - Any view components in the `SelfWithoutParams<.., T1, .., Tn>` value returned by your `map` or
 ///   `map_mut` implementation must be values returned by some `map_i` applied to a view
 ///   component of `this` of type `Ti`. (This safety condition doesn't forbid you from naming
@@ -571,35 +567,6 @@ macro_rules! recursive_view {
             for $crate::RecursiveViewKind<($($v,)*)>
             where
                 for<'maybe_unsat> $($name)::+<$($($generics)*,)* $($t),*>: ::core::clone::Clone,
-                // We define `'a` before expanding untrusted `tt` tokens, so by macro hygiene,
-                // this mention of `'a` prevents any of them from switching out this unsafe
-                // impl. There is still `where_bounds` below, but those bounds can't do any damage
-                // to the soundness of this code.
-                &'a ():,
-                $($($where_bounds)*)?
-            {}
-
-            #[allow(single_use_lifetimes, reason = "it's used once iff `*` repeats zero times")]
-            // SAFETY:
-            // Extended Requirement 1:
-            // The caller of this macro guarantees that copying `data` results in a new `Data`
-            // value whose view components are copies of `data`'s view components and which contain
-            // a copy of each of `data`'s view components. Therefore, the set of conceptual
-            // `StableClone` pools of the view components of `data` is the same as the set
-            // of conceptual pools of the view components of the clone of `data` (noting that
-            // `StableCopy` is implemented for each view component). By definition,
-            // the copy is in the same pool as `data`, satisfying the extended requirement 1.
-            unsafe impl<
-                'a, 'data,
-                $(
-                    $t: ::core::marker::Copy,
-                    $v: $crate::StableCopy<'a, 'data, $t, $(View: $($view_bounds)*)?>,
-                )*
-                $($($impl_params)*)?
-            > $crate::StableCopy<'a, 'data, $($name)::+<$($($generics)*,)* $($t),*>>
-            for $crate::RecursiveViewKind<($($v,)*)>
-            where
-                for<'maybe_unsat> $($name)::+<$($($generics)*,)* $($t),*>: ::core::marker::Copy,
                 // We define `'a` before expanding untrusted `tt` tokens, so by macro hygiene,
                 // this mention of `'a` prevents any of them from switching out this unsafe
                 // impl. There is still `where_bounds` below, but those bounds can't do any damage

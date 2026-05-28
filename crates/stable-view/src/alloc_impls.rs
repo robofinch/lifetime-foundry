@@ -228,7 +228,6 @@ recursive_view! {
     // - The view components of the clone of an `Box<T>` value are precisely the clones of
     //   each view component in the source `Box<T>` value. All source view components have at
     //   least one clone in the output, and each view component in the output is a clone.
-    // - `Box<T>` is never `Copy`.
     // - Any view components returned from `map` and `map_mut` are produced by applying the
     //   given `map` function to a view component of the source `self` value.
     unsafe impl<..> MapView<..> for Box<..>

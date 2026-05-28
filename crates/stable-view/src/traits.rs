@@ -648,11 +648,11 @@ pub unsafe trait StableViewMut<
 /// # Soundness of relying on `Clone`
 /// As seen during the stabilization of `dyn Allocator` in the standard library, a `dyn`-compatible
 /// `unsafe` trait is generally incapable of placing constraints on how a different safe trait is
-/// (optionally) implemented. See <https://github.com/rust-lang/rust/issues/156920> for details.
+/// optionally implemented. See <https://github.com/rust-lang/rust/issues/156920> for details.
 ///
 /// Users of `StableClone` can rely on its constraints on `Data`'s implementations of the safe
-/// `Clone` trait because `StableClone` is not `dyn`-compatible. The fact that the `Data: Clone`
-/// bound is not optional might also suffice:
+/// `Clone` trait because `StableClone` is not `dyn`-compatible and (more importantly) because the
+/// `Data: Clone` bound is not optional:
 /// <https://github.com/rust-lang/rust/issues/156920#issuecomment-4543098759>.
 ///
 /// # `__ImplyBound`
@@ -670,24 +670,3 @@ pub unsafe trait StableClone<
     'a, 'data, Data: Clone,
     __ImplyBound = &'a &'data (),
 >: StableView<'a, 'data, Data, __ImplyBound> {}
-
-/// Extend the conditions under which temporary views of this type may be soundly lifetime-extended
-/// (or, in the case of raw pointers, continue to be soundly accessed).
-///
-/// This trait is intended to be useful for self-referential types, and it is generally intended
-/// to be implemented for types that are reference-counted *or* provide owned "views" that are
-/// never invalidated when the source `Data` is dropped.
-///
-/// The safety requirement extends [`StableClone`], primarily for use when `Data` is a `&`
-/// reference or when the view is trivial.
-///
-/// # Safety
-///
-/// This trait extends Requirement 1 of [`StableClone`] with the following requirement: a copy of a
-/// `Data` value (produced via reliance on `Data: Copy` in some way) **must** be added to the
-/// conceptual pool which the source `Data` value is in (at the time the clone is produced),
-/// under the pool definition of `Self` and `Data`.
-pub unsafe trait StableCopy<
-    'a, 'data, Data: Copy,
-    __ImplyBound = &'a &'data (),
->: StableClone<'a, 'data, Data, __ImplyBound> {}
