@@ -379,7 +379,7 @@ macro_rules! recursive_view {
                     let $this_ref = data;
                     $(
                         // SAFETY: `'stable = 'a` is guaranteed to be sound.
-                        let $map = |view_component| unsafe {
+                        let $map = |view_component: &'a _| unsafe {
                             <$v as $crate::StableView<'a, 'data, $t>>::view::<'a>(
                                 view_component,
                             )
@@ -401,6 +401,15 @@ macro_rules! recursive_view {
                     )]
                     // SAFETY: See the "`transmute` in `view` Implementation" section of the
                     // `StableView` docs.
+                    // Additionally, note: why do we do this `transmute` here and set
+                    // `'stable = 'a` above, instead of using `'stable` above?
+                    // Basically, not handing lifetime-extended references to the `$map_impl` is
+                    // easier to reason about. The safety requirements of `recursive_view` speak
+                    // of inputs and outputs of `$map_impl`, and say that the `map_i` functions have
+                    // to be used for the transformation, but don't restrict whatever else
+                    // `$map_impl` might do. A pathological `$map_impl` is not allowed to give an
+                    // invalid output, sure; but who knows what it might do to lifetime-extended
+                    // inputs.
                     unsafe {
                         ::core::mem::transmute::<
                             $crate::CustomView<
@@ -478,7 +487,7 @@ macro_rules! recursive_view {
                     let $this_mut = data;
                     $(
                         // SAFETY: `'stable = 'a` is guaranteed to be sound.
-                        let $map = |view_component| unsafe {
+                        let $map = |view_component: &'a mut _| unsafe {
                             <$v as $crate::StableViewMut<'a, 'data, $t>>::view_mut::<'a>(
                                 view_component,
                             )
@@ -499,7 +508,8 @@ macro_rules! recursive_view {
                         reason = "if `'stable` is unused, this is a no-op",
                     )]
                     // SAFETY: See the "`transmute` in `view_mut` Implementation" section of the
-                    // `StableViewMut` docs.
+                    // `StableViewMut` docs. See also the above `view` implementation for why we do
+                    // a `transmute` here and set `'stable = 'a` in the above call.
                     unsafe {
                         ::core::mem::transmute::<
                             $crate::CustomViewMut<
