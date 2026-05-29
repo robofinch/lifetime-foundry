@@ -36,6 +36,7 @@ mod traits;
 mod view_kinds;
 mod macros;
 mod aliasable;
+mod viewer;
 
 mod core_impls;
 
@@ -64,5 +65,6 @@ pub use self::{
         SetDefaultViewMut, UnitViewKind, UnstableViewKind, View, ViewMut, ZeroSizedViewKind,
     },
 };
+pub use self::viewer::Viewer;
 #[cfg(feature = "alloc")]
 pub use self::aliasable::AliasableBox;

@@ -391,10 +391,10 @@ pub unsafe trait StableView<
     /// lifetime-extended under specific conditions.
     ///
     /// # Safety
-    /// The returned view must only be used under the conditions described by the below robust
-    /// guarantee. Any lifetime can be used for `'stable` between `'a` and `'data`, but
-    /// if `'stable` is chosen to be too long, then exposing the view to arbitrary safe Rust code
-    /// could cause undefined behavior.
+    /// The `'stable` data of the returned view must only be used under the conditions described by
+    /// the below robust guarantee. Any lifetime can be used for `'stable` between `'a` and `'data`,
+    /// but if `'stable` is chosen to be too long, then exposing the view to arbitrary safe Rust
+    /// code could cause undefined behavior.
     ///
     /// `'stable = 'a` is guaranteed to be sound.
     ///
@@ -406,10 +406,10 @@ pub unsafe trait StableView<
     /// between `'a` and `'data`, though *using* the view might trigger undefined behavior
     /// if `'stable` is too long.
     ///
-    /// While `'data` has not yet ended, the returned view can be used at a given moment so
-    /// long as, starting from when the view is returned from this function up to when it is used,
-    /// only the following three operations are performed on the source `Data` value (in any
-    /// quantity and ordering):
+    /// While `'data` has not yet ended, the `'stable` data of a returned view can be used at a
+    /// given moment so long as, starting from when the view is returned from this function up to
+    /// when its `'stable` data is used, only the following three operations are performed on the
+    /// source `Data` value (in any quantity and ordering):
     /// - moves,
     /// - non-`DerefMut` [coercions] among those available in Rust 1.85 (which may or may not
     ///   involve moves),
@@ -552,10 +552,10 @@ pub unsafe trait StableViewMut<
     /// lifetime-extended under specific conditions.
     ///
     /// # Safety
-    /// The returned mutable view must only be used under the conditions described by the below
-    /// robust guarantee. Any lifetime can be used for `'stable` between `'a` and `'data`, but
-    /// if `'stable` is chosen to be too long, then exposing the view to arbitrary safe Rust code
-    /// could cause undefined behavior.
+    /// The `'stable` data of the returned mutable view must only be used under the conditions
+    /// described by the below robust guarantee. Any lifetime can be used for `'stable` between
+    /// `'a` and `'data`, but if `'stable` is chosen to be too long, then exposing the view to
+    /// arbitrary safe Rust code could cause undefined behavior.
     ///
     /// `'stable = 'a` is guaranteed to be sound.
     ///
@@ -567,10 +567,10 @@ pub unsafe trait StableViewMut<
     /// lifetime between `'a` and `'data`, though *using* the view might trigger undefined
     /// behavior if `'stable` is too long.
     ///
-    /// While `'data` has not yet ended, the returned mutable view can be used at a given
-    /// moment so long as, starting from when the mutable view is returned from this function up to
-    /// when it is used, only the following three operations are performed on the source `Data`
-    /// value (in any quantity and ordering):
+    /// While `'data` has not yet ended, the `'stable` data of the returned mutable view can be used
+    /// at a given moment so long as, starting from when the mutable view is returned from this
+    /// function up to when its `'stable` data is used, only the following three operations are
+    /// performed on the source `Data` value (in any quantity and ordering):
     /// - moves,
     /// - non-deref [coercions] among those available in or before Rust 1.85 (which may or may not
     ///   involve moves, and may read inline data),
