@@ -20,8 +20,11 @@ all-features = true
 
 
 [dependencies]
-variance-family.workspace = true
+stable-view     = { workspace = true, default-features = false }
+variance-family = { workspace = true, default-features = false }
+
+either          = { workspace = true, default-features = false, optional = true }
 
 [features]
 default = ["alloc"]
-alloc = []
+alloc   = []
