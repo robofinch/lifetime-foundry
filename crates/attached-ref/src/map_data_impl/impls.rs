@@ -61,47 +61,8 @@ unsafe impl<L, R> MapDataStrictest<'_, R, Either<L, R>> for MapViaAltMove {
     }
 }
 
-// These next eight implementations basically just move the backing data into a long-lived stack
+// These next two implementations basically just move the backing data into a long-lived stack
 // frame. Not really much else can be done in `core`.
-
-unsafe impl<'b, 'new_data, T> MapDataStrictest<'new_data, T, &'b mut T>
-for MapViaMoveInto<&'b mut T>
-where
-    'b: 'new_data,
-    T:  'b,
-{
-    #[inline]
-    fn map_data_strictest(self, data: T) -> &'b mut T {
-        *self.0 = data;
-        self.0
-    }
-}
-
-unsafe impl<'b, 'new_data, T> MapDataStrictest<'new_data, T, &'b mut T>
-for MapViaMoveInto<AliasableRefMut<'b, T>>
-where
-    'b: 'new_data,
-    T:  'b,
-{
-    #[inline]
-    fn map_data_strictest(mut self, data: T) -> &'b mut T {
-        *self.0 = data;
-        AliasableRefMut::into_mut(self.0)
-    }
-}
-
-unsafe impl<'b, 'new_data, T> MapDataStrictest<'new_data, T, AliasableRefMut<'b, T>>
-for MapViaMoveInto<&'b mut T>
-where
-    'b: 'new_data,
-    T:  'b,
-{
-    #[inline]
-    fn map_data_strictest(self, data: T) -> AliasableRefMut<'b, T> {
-        *self.0 = data;
-        AliasableRefMut::from_mut(self.0)
-    }
-}
 
 unsafe impl<'b, 'new_data, T> MapDataStrictest<'new_data, T, AliasableRefMut<'b, T>>
 for MapViaMoveInto<AliasableRefMut<'b, T>>
@@ -113,42 +74,6 @@ where
     fn map_data_strictest(mut self, data: T) -> AliasableRefMut<'b, T> {
         *self.0 = data;
         self.0
-    }
-}
-
-unsafe impl<'b, 'new_data, T> MapDataStrictest<'new_data, T, &'b mut T>
-for MapViaMoveInto<&'b mut MaybeUninit<T>>
-where
-    'b: 'new_data,
-    T:  'b,
-{
-    #[inline]
-    fn map_data_strictest(self, data: T) -> &'b mut T {
-        self.0.write(data)
-    }
-}
-
-unsafe impl<'b, 'new_data, T> MapDataStrictest<'new_data, T, &'b mut T>
-for MapViaMoveInto<AliasableRefMut<'b, MaybeUninit<T>>>
-where
-    'b: 'new_data,
-    T:  'b,
-{
-    #[inline]
-    fn map_data_strictest(self, data: T) -> &'b mut T {
-        AliasableRefMut::into_mut(self.0).write(data)
-    }
-}
-
-unsafe impl<'b, 'new_data, T> MapDataStrictest<'new_data, T, AliasableRefMut<'b, T>>
-for MapViaMoveInto<&'b mut MaybeUninit<T>>
-where
-    'b: 'new_data,
-    T:  'b,
-{
-    #[inline]
-    fn map_data_strictest(self, data: T) -> AliasableRefMut<'b, T> {
-        AliasableRefMut::from_mut(self.0.write(data))
     }
 }
 

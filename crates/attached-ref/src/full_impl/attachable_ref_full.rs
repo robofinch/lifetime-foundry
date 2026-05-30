@@ -10,11 +10,11 @@ use core::{convert::Infallible, marker::PhantomData, mem::ManuallyDrop};
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use stable_view::{CustomView, CustomViewMut, DefaultViewKind, StableClone, StableView, StableViewMut};
-use variance_family::{Lend, LendFamily, LifetimeFamily, Unvarying, Varying};
+use variance_family::{Lend, LendFamily, Unvarying, Varying};
 
 use crate::{erased_slot::ErasedSelfRefSlot, error::TryAttachError};
 use crate::{
-    closure_traits::{ViewMutToVarying, ViewToVarying},
+    closure_traits::{ViewMutToLend, ViewToLend},
     const_hack::{deref_const_hack, split_tuple_const_hack, unwrap_no_ref_unchecked_const_hack},
     slot::{SelfRefCases, SelfRefSlot},
 };
@@ -108,24 +108,7 @@ where
     /// Note that this struct is also covariant over `Data`.
     pub(super) variance: PhantomData<fn(*mut R, *mut M) -> &'data ()>,
     /// # Safety Invariant
-    /// Must not be manipulated in a way which would invalidate `self.slot`.
-    ///
-    /// If `'stable` data from an immutable/shared view of `self.data` could be in `self.slot`,
-    /// then `self.data` must only be:
-    /// - moved (good, since it's stored inline and we must be able to be moved at any time),
-    /// - coerced through non-`DerefMut` coercions, among those available in Rust 1.85 (good, since
-    ///   we're covariant over `Data`, thereby permitting many coercions -- though not `Deref`
-    ///   or `DerefMut` coercions -- and hopefully any problematic future coercions are opt-in,
-    ///   else this would be far from the only type that breaks),
-    /// - immutably accessed (we do use this right in methods of this type).
-    ///
-    /// If `'stable` data from a mutable/exclusive view of `self.data` could be in `self.slot`,
-    /// then `self.data` must only:
-    /// - be moved (see above),
-    /// - be coerced through non-deref coercions, among those available in Rust 1.85 (see above),
-    /// - have no-ops done on it.
-    ///
-    /// TODO: interactions with `Clone` and `StableClone`.
+    /// TODO: revamping semantics of `stable-view` rn.
     pub(super) data:     SpeedBump<Data>,
 }
 
@@ -248,7 +231,7 @@ where
     pub fn attach_ref<F>(data: Data, f: F) -> Self
     where
         DefaultViewKind: for<'a> StableView<'a, 'data, Data>,
-        F:     ViewToVarying<'data, 'upper, Data, DefaultViewKind, R>,
+        F:     ViewToLend<'data, 'upper, Data, DefaultViewKind, R>,
         'data: 'upper,
     {
         Self::attach_ref_with::<DefaultViewKind, F>(data, f)
@@ -265,7 +248,7 @@ where
     pub fn try_attach_ref<Error, F>(data: Data, f: F) -> Result<Self, TryAttachError<Data, Error>>
     where
         DefaultViewKind: for<'a> StableView<'a, 'data, Data>,
-        F: ViewToVarying<'data, 'upper, Data, DefaultViewKind, Result<R, Unvarying<Error>>>,
+        F: ViewToLend<'data, 'upper, Data, DefaultViewKind, Result<R, Unvarying<Error>>>,
     {
         Self::try_attach_ref_with::<DefaultViewKind, Error, F>(data, f)
     }
@@ -291,26 +274,26 @@ where
     pub fn attach_ref_with<V, F>(data: Data, f: F) -> Self
     where
         V: for<'a> StableView<'a, 'data, Data>,
-        F: ViewToVarying<'data, 'upper, Data, V, R>,
+        F: ViewToLend<'data, 'upper, Data, V, R>,
     {
-        /// Polyfill for `|view, _phantom| Ok(f.view_to_varying(view))`,
+        /// Polyfill for `|view, _phantom| Ok(f.view_to_lend(view))`,
         /// which only works (in the below scenario) in Rust 1.94.0 and above.
         #[derive(Debug)]
         #[repr(transparent)]
         struct InfallibleF<F>(F);
 
         impl<'data, 'upper, Data, V, R, F>
-            ViewToVarying<'data, 'upper, Data, V, Result<R, Unvarying<Infallible>>>
+            ViewToLend<'data, 'upper, Data, V, Result<R, Unvarying<Infallible>>>
         for InfallibleF<F>
         where
             'upper: 'data,
             Data:   ?Sized,
             V:      for<'a> StableView<'a, 'data, Data>,
-            R:      for<'lower> LifetimeFamily<'lower, &'upper (), Is: Sized>,
-            F:      ViewToVarying<'data, 'upper, Data, V, R>,
+            R:      LendFamily<&'upper ()>,
+            F:      ViewToLend<'data, 'upper, Data, V, R>,
         {
             #[inline]
-            fn view_to_varying<'a, 'stable>(
+            fn view_to_lend<'a, 'stable>(
                 self,
                 view: CustomView<'a, 'stable, 'data, Data, V>,
             ) -> Varying<'stable, 'stable, &'upper (), Result<R, Unvarying<Infallible>>>
@@ -318,7 +301,7 @@ where
                 'data:   'stable,
                 'stable: 'a
             {
-                Ok(self.0.view_to_varying(view))
+                Ok(self.0.view_to_lend(view))
             }
         }
 
@@ -346,17 +329,17 @@ where
     ) -> Result<Self, TryAttachError<Data, Error>>
     where
         V: for<'a> StableView<'a, 'data, Data>,
-        F: ViewToVarying<'data, 'upper, Data, V, Result<R, Unvarying<Error>>>,
+        F: ViewToLend<'data, 'upper, Data, V, Result<R, Unvarying<Error>>>,
     {
         let data = SpeedBump {
             speed_bump_inner: data,
         };
 
-        // Extra scope, to make sure that if `V::view` or `f.view_to_varying(view)` unwinds,
+        // Extra scope, to make sure that if `V::view` or `f.view_to_lend(view)` unwinds,
         // any references to `data` are necessarily dropped before `data` is dropped.
         let result = {
             let view = unsafe { V::view(&data.speed_bump_inner) };
-            f.view_to_varying(view)
+            f.view_to_lend(view)
         };
 
         // WARNING: For the rest of this function, we should not unwind, since I haven't checked
@@ -400,7 +383,7 @@ where
     pub fn attach_mut<F>(data: Data, f: F) -> Self
     where
         DefaultViewKind: for<'a> StableViewMut<'a, 'data, Data>,
-        F:     ViewMutToVarying<'data, 'upper, Data, DefaultViewKind, M>,
+        F:     ViewMutToLend<'data, 'upper, Data, DefaultViewKind, M>,
         'data: 'upper,
     {
         Self::attach_mut_with::<DefaultViewKind, F>(data, f)
@@ -417,7 +400,7 @@ where
     pub fn try_attach_mut<Error, F>(data: Data, f: F) -> Result<Self, TryAttachError<Data, Error>>
     where
         DefaultViewKind: for<'a> StableViewMut<'a, 'data, Data>,
-        F: ViewMutToVarying<'data, 'upper, Data, DefaultViewKind, Result<M, Unvarying<Error>>>,
+        F: ViewMutToLend<'data, 'upper, Data, DefaultViewKind, Result<M, Unvarying<Error>>>,
     {
         Self::try_attach_mut_with::<DefaultViewKind, Error, F>(data, f)
     }
@@ -444,26 +427,26 @@ where
     pub fn attach_mut_with<V, F>(data: Data, f: F) -> Self
     where
         V: for<'a> StableViewMut<'a, 'data, Data>,
-        F: ViewMutToVarying<'data, 'upper, Data, V, M>,
+        F: ViewMutToLend<'data, 'upper, Data, V, M>,
     {
-        /// Polyfill for `|view_mut, _phantom| Ok(f.view_mut_to_varying(view_mut))`,
+        /// Polyfill for `|view_mut, _phantom| Ok(f.view_mut_to_lend(view_mut))`,
         /// which only works (in the below scenario) in Rust 1.94.0 and above.
         #[derive(Debug)]
         #[repr(transparent)]
         struct InfallibleF<F>(F);
 
         impl<'data, 'upper, Data, V, M, F>
-            ViewMutToVarying<'data, 'upper, Data, V, Result<M, Unvarying<Infallible>>>
+            ViewMutToLend<'data, 'upper, Data, V, Result<M, Unvarying<Infallible>>>
         for InfallibleF<F>
         where
             'upper: 'data,
             Data:   ?Sized,
             V:      for<'a> StableViewMut<'a, 'data, Data>,
-            M:      for<'lower> LifetimeFamily<'lower, &'upper (), Is: Sized>,
-            F:      ViewMutToVarying<'data, 'upper, Data, V, M>,
+            M:      LendFamily<&'upper ()>,
+            F:      ViewMutToLend<'data, 'upper, Data, V, M>,
         {
             #[inline]
-            fn view_mut_to_varying<'a, 'stable>(
+            fn view_mut_to_lend<'a, 'stable>(
                 self,
                 view_mut: CustomViewMut<'a, 'stable, 'data, Data, V>,
             ) -> Varying<'stable, 'stable, &'upper (), Result<M, Unvarying<Infallible>>>
@@ -471,7 +454,7 @@ where
                 'data:   'stable,
                 'stable: 'a
             {
-                Ok(self.0.view_mut_to_varying(view_mut))
+                Ok(self.0.view_mut_to_lend(view_mut))
             }
         }
 
@@ -499,17 +482,17 @@ where
     ) -> Result<Self, TryAttachError<Data, Error>>
     where
         V: for<'a> StableViewMut<'a, 'data, Data>,
-        F: ViewMutToVarying<'data, 'upper, Data, V, Result<M, Unvarying<Error>>>,
+        F: ViewMutToLend<'data, 'upper, Data, V, Result<M, Unvarying<Error>>>,
     {
         let mut data = SpeedBump {
             speed_bump_inner: data,
         };
 
-        // Extra scope, to make sure that if `V::view` or `f.view_to_varying(view)` unwinds,
+        // Extra scope, to make sure that if `V::view_mut` or `f.view_mut_to_lend(view)` unwinds,
         // any references to `data` are necessarily dropped before `data` is dropped.
         let result = {
             let view_mut = unsafe { V::view_mut(&mut data.speed_bump_inner) };
-            f.view_mut_to_varying(view_mut)
+            f.view_mut_to_lend(view_mut)
         };
 
         // WARNING: For the rest of this function, we should not unwind, since I haven't checked
@@ -539,7 +522,7 @@ where
         // Ranges over `'stable` such that `'stable: data`.
         //
         // **Critically**, there are no implied lower bounds on `'stable`, despite `T`
-        // potentially causing some concern. See the reasoning of `ViewToVarying`.
+        // potentially causing some concern. See the reasoning of `ViewToLend`.
         F: for<'stable> FnOnce(
             SelfRefSlot<'stable, 'upper, N, R, M>,
             PhantomData<&'stable &'data ()>,

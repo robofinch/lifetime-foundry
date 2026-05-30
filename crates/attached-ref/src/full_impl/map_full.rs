@@ -13,7 +13,7 @@ use stable_view::{StableClone, Viewer};
 use variance_family::{Lend, LendFamily};
 
 use crate::{erased_slot::ErasedSelfRefSlot, slot::SelfRefCases};
-use crate::map_data_impl::{MapData, MapDataStrict, MapDataStrictest};
+use crate::map_data_impl::{MapDataStrict, MapDataStrictest};
 use super::{
     attachable_ref_full::{AttachableRefFull, SpeedBump},
     map_full_utils::{FullResult, MappedRef, MappedRefMut, RefResult, RefMutResult},
@@ -35,7 +35,7 @@ where
     type Ok;
     type Err;
 
-    type Map:          MapData<'new_data, Data, Self::NewData>;
+    type Map:          FnOnce(Data) -> Self::NewData;
     type MapStrict:    MapDataStrict<'new_data, Data, Self::NewData>;
     type MapStrictest: MapDataStrictest<'new_data, Data, Self::NewData>;
 
@@ -78,7 +78,7 @@ where
     type Ok;
     type Err;
 
-    type Map:       MapData<'new_data, Data, Self::NewData>;
+    type Map:       FnOnce(Data) -> Self::NewData;
     type MapStrict: MapDataStrict<'new_data, Data, Self::NewData>;
 
     fn map_maybe_ref<'a, 'stable>(
@@ -174,7 +174,7 @@ where
                 // In this branch, `new_slot` is necessarily in the `NoRef` state, so no
                 // self-references are invalidated if `self.data` is dropped and invalidated
                 // during an unwind.
-                new_data = map.map_data(self.data.speed_bump_inner);
+                new_data = map(self.data.speed_bump_inner);
             }
             MapData::MapStrict(strict)       => {
                 // In these other two cases, there *are* self-references. Note that we can't
@@ -245,7 +245,7 @@ where
                 match case_ref {
                     MappedRef::NoRef(new_no_ref, map) => (
                         SelfRefCases::NoRef(new_no_ref),
-                        map.map_data(data.clone()),
+                        map(data.clone()),
                         return_ok,
                     ),
                     MappedRef::Ref(new_self_ref, strict) => (

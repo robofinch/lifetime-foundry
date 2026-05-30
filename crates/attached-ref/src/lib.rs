@@ -33,7 +33,7 @@ mod const_hack;
 
 pub use self::error::TryAttachError;
 pub use self::{
-    closure_traits::{Compose, MapVarying, ViewMutToVarying, ViewToVarying},
+    closure_traits::{ViewMutToLend, ViewToLend},
     full_impl::AttachableRefFull,
     slot::{SelfRefCases, SelfRefSlot},
     wrappers::{AttachableRef, AttachableRefMut, AttachedRef, AttachedRefMut},
@@ -55,13 +55,13 @@ pub mod map_full {
 #[expect(clippy::module_name_repetitions, reason = "`map_data::MapDataStrict(est)` is acceptable")]
 pub mod map_data {
     pub use crate::map_data_impl::{
-        BlanketMapData, ComposeMaps, DynDrop, MapData, MapDataStrict, MapDataStrictest, MapViaAlloc,
-        MapViaAltMove, MapViaMove, MapViaMoveInto,
+        BlanketMapData, DynDrop, MapDataStrict, MapDataStrictest, MapViaAlloc, MapViaAltMove,
+        MapViaMove, MapViaMoveInto,
     };
 
     #[cfg(feature = "alloc")]
-    pub use crate::map_data_impl::RcUninit;
+    pub use crate::map_data_impl::{ErasedBox, ErasedRc, RcUninit};
 
     #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
-    pub use crate::map_data_impl::ArcUninit;
+    pub use crate::map_data_impl::{ArcUninit, ErasedArc};
 }
