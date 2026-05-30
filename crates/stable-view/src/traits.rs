@@ -671,10 +671,11 @@ pub unsafe trait StableViewMut<
 ///
 /// ## Requirement 3
 ///
-/// For ***any*** view kind `V`, the `'stable` data of a value of type
-/// [`CustomView<'a, 'stable, 'data, Self, V>`] obtained from applying `V`'s impl of
-/// [`StableView<'a, 'data, Self>::view`] to some source `Self` value in the pool **must** not be
-/// invalidated so long as its source pool is nonempty and `'data` has not yet ended.
+/// For ***any*** view kind `V` and lifetimes `'a`, `'stable`, and `'any_data` such that
+/// `V: StableView<'a, 'any_data, Self>`, the `'stable` data of a value of type
+/// [`CustomView<'a, 'stable, 'any_data, Self, V>`] obtained from applying `V`'s impl of
+/// [`StableView<'a, 'any_data, Self>::view`] to some source `Self` value in the pool **must**
+/// not be invalidated so long as its source pool is nonempty and `'data` has not yet ended.
 ///
 /// Note that changing the conceptual pool to which the source `Self` value is associated (likely
 /// by mutating it in some way) does not change the pool associated with the previously-produced
