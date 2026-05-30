@@ -31,12 +31,12 @@ use crate::{
 /// (which requires `unsafe`ly dereferencing a raw pointer or lifetime-extending a reference).
 ///
 /// ### `&T`
-/// Any `&T` directly obtained from a value of `Self` via methods provided by this crate[^1], as
-/// well as all pointers or references derived from such a `&T`, will not be invalidated by moving
-/// that value of `Self`, by dropping it, by performing non-`DerefMut` coercions among coercions
-/// available in or before Rust 1.85 (e.g., where `'long: 'short`, an `AliasableRefMut<'long, T>`
-/// may be coerced to `AliasableRefMut<'short, T>` no differently than a move), or by performing
-/// any operation on a shared reference (`&Self`) to that value.
+/// Any `&T` directly obtained from a value of `Self` via methods provided by this crate (see
+/// below), as well as all pointers or references derived from such a `&T`, will not be invalidated
+/// by moving that value of `Self`, by dropping it, by performing non-`DerefMut` coercions among
+/// coercions available in or before Rust 1.85 (e.g., where `'long: 'short`, an
+/// `AliasableRefMut<'long, T>` may be coerced to `AliasableRefMut<'short, T>` no differently than
+/// a move), or by performing any operation on a shared reference (`&Self`) to that value.
 ///
 /// The "in or before Rust 1.85" qualifier guards against any future coercions, which could, like
 /// `DerefMut`, be problematic.
@@ -53,12 +53,12 @@ use crate::{
 /// (Safe code cannot violate this guarantee, as doing so requires writing through a raw pointer.)
 ///
 /// ### `&mut T`
-/// Any `&mut T` directly obtained from a value of `Self` via methods provided by this crate[^1], as
-/// well as all pointers or references derived from such a `&mut T`, will not be invalidated by
-/// moving that value of `Self`, by dropping it, by performing non-deref coercions available
-/// in or before Rust 1.85 (e.g., where `'long: 'short`, an `AliasableRefMut<'long, T>` may be
-/// coerced to `AliasableRefMut<'short, T>` no differently than a move), or by performing no-ops on
-/// it.
+/// Any `&mut T` directly obtained from a value of `Self` via methods provided by this crate (see
+/// below), as well as all pointers or references derived from such a `&mut T`, will not be
+/// invalidated by moving that value of `Self`, by dropping it, by performing non-deref coercions
+/// available in or before Rust 1.85 (e.g., where `'long: 'short`, an `AliasableRefMut<'long, T>`
+/// may be coerced to `AliasableRefMut<'short, T>` no differently than a move), or by performing
+/// no-ops on it.
 ///
 /// The "in or before Rust 1.85" qualifier guards against any future coercions, which could, like
 /// `Deref` and `DerefMut`, be problematic.
@@ -69,19 +69,20 @@ use crate::{
 /// and references to the `T` pointee could be invalidated through other means. (Aliasing rules may
 /// also invalidate those pointers and references due to interactions among themselves, as normal.)
 ///
-/// [^1]: This qualifier is intended to exclude pathological third-party implementations and
-///     pathological interpretations of these guarantees. The following lists cannot and are not
-///     intended to be exhaustive.
+/// ### "Methods provided by this crate"
 ///
-///     Ways to obtain a `&T` to which the first guarantee applies include
-///     `AliasableRefMut`'s [`Deref`], [`AsRef`], and [`StableView::view`] implementations.
-///     Ways to obtain a `&mut T` to which the second guarantee applies include
-///     `AliasableRefMut`'s [`DerefMut`], [`AsMut`], and [`StableViewMut::view_mut`]
-///     implementations.
+/// This qualifier is intended to exclude pathological third-party implementations and pathological
+/// interpretations of these guarantees. The following lists cannot and are not intended to be
+/// exhaustive.
 ///
-///     [`AliasableRefMut::into_mut`] and [`AliasableRefMut::into_pin_mut`] are intentionally not
-///     listed, as they consume a `Self` value, so vacuously that value cannot be later used to
-///     invalidate any pointers or references; the value would already be gone.
+/// Ways to obtain a `&T` to which the first guarantee applies include `AliasableRefMut`'s
+/// [`Deref`], [`AsRef`], and [`StableView::view`] implementations. Ways to obtain a `&mut T` to
+/// which the second guarantee applies include `AliasableRefMut`'s [`DerefMut`], [`AsMut`], and
+/// [`StableViewMut::view_mut`] implementations.
+///
+/// [`AliasableRefMut::into_mut`] and [`AliasableRefMut::into_pin_mut`] are intentionally not
+/// listed, as they consume a `Self` value, so vacuously that value cannot be later used to
+/// invalidate any pointers or references; the value would already be gone.
 ///
 /// # Layout
 /// This type is a transparent wrapper around a `NonNull<T>` and may be used in FFI (depending on

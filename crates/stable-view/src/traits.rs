@@ -74,7 +74,7 @@ pub type CustomViewMut<'a, 'stable, 'data, Data, V>
 ///   `Data`, which could escalate a `&` reference to part of `Data` to a `&mut` reference
 ///   to another part of `Data`.)
 ///
-/// The "in or before Rust 1.85" qualifer is included to guard against any future user-defined
+/// The "in or before Rust 1.85" qualifier is included to guard against any future user-defined
 /// coercions that could be problematic.
 ///
 /// We trivially know that only those three operations are performed on the source `Data` value

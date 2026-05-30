@@ -28,10 +28,10 @@ understand how this crate works, but I assume that it'd be difficult for others 
 
 # Architecture
 
-In order to allow custom third-party views of other crates' types, the `StableView`,
-`StableViewMut`, and `StableClone` traits are not implemented directly for types like `Vec<T>` or
-`Rc<T>`. Instead, the source data type is passed as a generic parameter to a stable view trait,
-and the trait is implemented for a "view kind" trait that indicates how the view is obtained.
+In order to allow custom third-party views of other crates' types, the `StableView` and
+`StableViewMut` traits are not implemented directly for types like `Vec<T>` or `Rc<T>`. Instead,
+the source data type is passed as a generic parameter to a stable view trait, and the trait is
+implemented for a "view kind" trait that indicates how the view is obtained.
 
 For example, [`PointerViewKind`] implements `StableView<'_, '_, Rc<T>>` and
 [`RecursiveViewKind<(VT, VE)>`] implements `StableView<'_, '_, Result<T, E>>`.
@@ -43,6 +43,11 @@ Still, it is useful for a type to indicate how it is *expected* to provide views
 case. For this purpose, [`DefaultViewKind`] is provided, whose impls of the stable view traits
 can be enabled by implementing the [`SetDefaultView`] and [`SetDefaultViewMut`] traits for a source
 data type.
+
+The data types, rather than view types, do directly implement `StableClone`. Implementors of
+`StableClone` need to make certain guarantees about *all* possible `'stable` views of that type,
+rather than each view kind making individual guarantees. (The latter approach was attempted first,
+but that turned out to not actually be very useful.)
 
 Note that the view kind types do not actually enforce any particular semantics on their stable view
 trait implementations (beyond the traits' own requirements), whether for soundness or just

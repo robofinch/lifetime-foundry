@@ -88,6 +88,8 @@ impl<'a, 'stable, 'data, Data: ?Sized> Viewer<'a, 'stable, 'data, Data> {
     /// from the returned `Viewer` could have ended up, you can soundly perform invalidating
     /// operations on the backing `Data` value after ensuring that **all** possible `'stable`
     /// view data has been discarded.
+    ///
+    /// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html
     #[inline]
     #[must_use]
     pub const unsafe fn new(data: &'a Data) -> Self {
