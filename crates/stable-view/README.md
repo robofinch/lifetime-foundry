@@ -15,6 +15,15 @@ This crate provides [`StableView`], [`StableViewMut`], and [`StableClone`] trait
 which prohibit certain actions, such as moving a value, from invalidating the temporary views
 of values implementing the traits.
 
+Generally, this crate's traits are low-level glue. It is expected that most transitive users will
+not need to implement a `Stable*` trait at all; this crate already provides numerous `Stable*`
+trait implementations (though custom implementations for non-`std` data structures may be
+necessary). Neither is it expected that most transitive users will need to directly call an `unsafe`
+method or perform `unsafe` lifetime extension when using the `Stable*` traits. For example, after
+[`attached-ref`] deals with the `unsafe` parts of obtaining a view itself, the views can be soundly
+exposed to safe user code. See also [`Viewer`], which allows safe code to obtain views
+(after a `Viewer` is created in upstream `unsafe` code).
+
 The traits are intended to be useful for self-referential structs; aliasable source data can be
 soundly stored alongside values containing `'stable` references (obtained via a stable view trait)
 to that source data, even when Rust's normal borrow checking and aliasing rules would ordinarily
@@ -23,8 +32,9 @@ make such a struct impossible or unsound to implement.
 With this advanced `unsafe` target audience, it is quite difficult to either implement these traits
 or directly use their methods and guarantees in `unsafe` code; ideally, you should not need to
 directly interact with this crate, besides perhaps forwarding `V: StableView<..>` bounds (or
-similar) to other libraries in generic code. (As the author, it's no longer difficult for me to
-understand how this crate works, but I assume that it'd be difficult for others to learn.)
+similar) to other libraries in generic code. (As the author of both this crate and [`attached-ref`],
+it's no longer difficult for me to understand how this crate works, but I assume that it'd be
+difficult for others to learn.)
 
 # Architecture
 
@@ -40,14 +50,15 @@ An [`UnstableViewKind`] type implements the stable view traits for all source da
 way, by not putting any `'stable` data in its provided views.
 
 Still, it is useful for a type to indicate how it is *expected* to provide views in the most common
-case. For this purpose, [`DefaultViewKind`] is provided, whose impls of the stable view traits
-can be enabled by implementing the [`SetDefaultView`] and [`SetDefaultViewMut`] traits for a source
-data type.
+case. For this purpose, [`DefaultViewKind`] is provided; libraries generic over view kinds may
+wish to provide special-case methods for [`DefaultViewKind`]. For example, [`attached-ref`]
+has `attach_ref_with` methods which need a view kind to be specified, while `attach_ref` defaults
+to [`DefaultViewKind`].
 
 The data types, rather than view types, do directly implement `StableClone`. Implementors of
-`StableClone` need to make certain guarantees about *all* possible `'stable` views of that type,
-rather than each view kind making individual guarantees. (The latter approach was attempted first,
-but that turned out to not actually be very useful.)
+`StableClone` need to make certain guarantees about *all* possible views of that type, rather than
+each view kind making individual guarantees. (The latter approach was attempted first, but that
+turned out to not actually be very useful.)
 
 Note that the view kind types do not actually enforce any particular semantics on their stable view
 trait implementations (beyond the traits' own requirements), whether for soundness or just
@@ -59,6 +70,25 @@ over what their view types are; rather than a plain `&'stable Self::Target` refe
 `Deref` trait), a view can be an arbitrary type (parameterized by several lifetimes, if needed). For
 instance, the default implementation of `StableView<'a, 'other_data, Option<T>>` sets
 `View<'a, 'stable, 'other_data, Option<T>>` to `Option<View<'a, 'stable, 'other_data, T>>`.
+
+## Strength of `StableClone`
+Glossing over details, note that `StableClone` treats `data` and `data.clone()` equivalently to a
+greater extent than currently needed. In particular, [`attached-ref`] currently needs stable data
+valid at the moment `data_clone = data.clone()` is called to be kept valid so long as either `data`
+or `data_clone` are manipulated through permitted operations. However, it doesn't need views of
+`data` obtained *after* the creation of `data_clone` to be kept valid by `data_clone`, and it
+doesn't need views of `data_clone` to be kept valid by `data`. *Conceivably*, some sort of linked
+list such that clones have a shared tail but different heads, or some sort of tree-based structure,
+might have properties that *would* be sufficient for usage in [`attached-ref`], if not for the
+excessively strong restrictions of `StableClone`.
+
+The mental model of `StableClone` where `data` and `data.clone()` are placed in the same pool
+would be insufficient for the linked structure; [...]
+
+...I think the "conceptual pool" model is overcomplicated, actually.
+
+Mmmm. I should cut back.
+
 
 # `noalias` Types
 

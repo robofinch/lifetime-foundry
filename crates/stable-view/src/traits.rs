@@ -5,6 +5,69 @@
 use variance_family::{CovariantFamily, Varying};
 
 
+// I think I should document a larger split between `'stable` stable data and `'stable` long-lived
+// data. All `'stable` data in a returned view must either be:
+// - long-lived data which remains valid for at least `'data`, regardless of what is done to the
+//   source `Data` value,
+// - stable data which is not invalidated by the three operations permitted by
+//   `StableView` or `StableViewMut`
+
+
+
+
+// The `'stable` data in a returned view is split into two categories defined as follows:
+// - long-lived `'stable` data which remains valid for at least `'data`, regardless of what is
+//   done to the source `Data` value,
+// - stable `'stable` data.
+//
+// That is, the definition of "stable" `'stable` data can be taken as "all `'stable` data which is
+// not long-lived `'stable` data". (This definition is dependent on context for what `'stable` and
+// `'data` are.) Yes, this means that "stable data" -- without backticks -- does not refer to all
+// `'stable` data.
+//
+// `StableView`, `StableViewMut`, and `StableClone` place requirements on the validity of stable
+// data, but not long-lived data. ("Do not use this data after `'data` ends" is a sufficient
+// requirement for long-lived data.)
+//
+// `StableView` (or `StableViewMut`, respectively) requires that stable data remains valid,
+// starting from the time it is obtained (via `StableView::view` or `StableViewMut::view_mut`,
+// respectively, applied to some source data value), while both:
+// - `'data` has not ended (in other words, both long-lived and stable data could be invalidated
+//   after `'data` ends), **and**
+// - the source data value is manipulated only via three kinds of operations specified by
+//   `StableView` (or `StableViewMut`, respectively).
+//
+// `StableView` (or `StableViewMut`, respectively) do not specify the impact of other kinds of
+// operations (besides the three permitted by the respective traits) on the validity of stable
+// data. That is, these requirements are a *lower* bound on when stable data is valid, so you
+// cannot generally assume that stable data is immediately invalidated after `'data` ends or after
+// a different operation is performed on the source data value. Indeed, implementing `StableClone`
+// raise that lower bound. More mechanisms like `StableClone` could be created and used,
+// whether within this crate or downstream.
+//
+// `StableClone` defines the relevant "source" of stable data obtained via `StableView` in terms
+// of "conceptual pools" of values, rather than individual source data values. Each `Data` type
+// may have a different definition of conceptual pool used for views obtained via
+// `StableView::<'_, '_, Data>::view`. Imagine a pool of `Rc`s, a pool of `Arc`s, an entirely
+// imaginary infinite-size pool of `()`s, or an arbitrarily-defined pool of `Infallible`s which
+// cannot have views taken of them anyway. Note that we'd like allow an `Rc<T>` and an
+// `Rc<dyn Trait>` to be in the same conceptual pool, so `StableClone` permits definitions of
+// "conceptual pool" to be filled with values of any type.
+//
+// `StableClone` places constraints on the definitions of conceptual pools, constrains how certain
+// operations may affect the size of a certain conceptual pool, associates stable data with source
+// conceptual pools, and requires that stable data remains valid while its source pool is nonempty.
+//
+// Note that `StableClone` only interacts with `StableView`, not `StableViewMut`. The two traits
+// don't contradict each other, though; for example, `StableViewMut<'_, '_, Data: StableClone>`
+// could be implemented for a type with a *partially* reference-counted `Clone` implementation,
+// such that the data obtained via `Deref` is pooled in an `Rc` while the data obtained via
+// `DerefMut` is individual to each value. Some copy-on-write types could also implement that
+// trait combination in a useful way.
+
+
+
+
 /// The [`StableView::View`] associated with some `Data` and view kind (such as [`PointerViewKind`]
 /// or [`DefaultViewKind`]).
 ///
