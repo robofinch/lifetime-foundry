@@ -44,7 +44,7 @@
 ///     // (You can name it something else, `'varying` is just a convention.)
 ///     // `CovariantFamily<'_, _>` is simply a magic string you must include.
 ///     // (This is intended to mimic real Rust syntax, of course.)
-///     impl<'varying, {'other, Generics}> CovariantFamily<'_, _>
+///     impl<'varying, {'other, Generics,}> CovariantFamily<'_, _>
 ///     // (See below docs for why this `unsafe` is necessary.)
 ///     // SAFETY: `VaryingFoo` is defined in this crate.
 ///     for #[unsafe(not_a_foreign_fundamental_type)] VaryingFoo<'other, Generics>
@@ -164,12 +164,12 @@ macro_rules! contravariant {
 /// // If you need to make a family for a foreign type, you need a separate type (which can just
 /// // be a newtype). If making a family for a local type, it's preferred to call
 /// // `unvarying!` directly on that local type.
-/// struct FooFamily<'c, T: ?Sized + Debug>(Foo<'c, T>>);
+/// struct FooFamily<'c, T: ?Sized + Debug>(Foo<'c, T>);
 ///
 /// unvarying! {
 ///     // `(Co+Contra)variantFamily<'_, _>` is simply a magic string you must include.
 ///     // (This is intended to mimic real Rust syntax.)
-///     impl<{'c, T}> (Co+Contra)variantFamily<'_, _>
+///     impl<{'c, T,}> (Co+Contra)variantFamily<'_, _>
 ///     // (See below docs for why this `unsafe` is necessary.)
 ///     // SAFETY: `FooFamily` is defined in this crate.
 ///     for #[unsafe(not_a_foreign_fundamental_type)] FooFamily<'c, T>
@@ -351,11 +351,11 @@ pub(crate) use concrete_types;
 ///         'c,
 ///         // The attribute indicates that `T` is treated as a variance family.
 ///         // SAFETY: The varying type `Bar<'c, T, N, U, V>` is contravariant over `T`.
-///         #[unsafe(contravariant)] T,
+///         #[unsafe(contravariant)] T (Is: 'c),
 ///         // No attribute. Not treated as a variance family. (Obviously. It's not even a type.)
 ///         const N: usize,
 ///         // SAFETY: The varying type `Bar<'c, T, N, U, V>` is covariant over `U`.
-///         #[unsafe(covariant)] U (Is: Sized),
+///         #[unsafe(covariant)] U (Is: Sized + Debug),
 ///         // No attribute. Not treated as a variance family.
 ///         V,
 ///         // `W` is required to implement `UnvaryingFamily`.
@@ -523,7 +523,7 @@ macro_rules! generic_wrapper {
 ///     // SAFETY: The varying type `Foo<'varying, T>` is covariant over `'varying` and `T`.
 ///     as Foo<#[unsafe(covariant)] '_, #[unsafe(covariant)] T>
 ///     where {
-///         T: ?Sized,
+///         T: ?Sized + Debug,
 ///     }
 /// }
 /// ```
@@ -604,7 +604,7 @@ macro_rules! varying_ref_wrapper {
 ///     // `#[unvarying]` is a magic string you must include, to mimic `generic_wrapper`'s syntax.
 ///     as Foo<'_, #[unvarying] T>
 ///     where {
-///         T: ?Sized,
+///         T: ?Sized + Debug,
 ///     }
 /// }
 /// ```
@@ -817,8 +817,8 @@ macro_rules! __impl_with_lifetime {
     {
         impl<
             $varying:lifetime, $varying_single_use:lifetime, $($varying_single_use_param:lifetime,)?
-            {$($params:tt)*
-        }> _<'_, _>
+            {$($params:tt)*}
+        > _<'_, _>
         for #[unsafe(not_a_foreign_fundamental_type)] $family_type:ty
         as $varying_type:ty
         where {$($non_varying_wb:tt)*}
@@ -831,13 +831,13 @@ macro_rules! __impl_with_lifetime {
         // though, since we do not rely on delicate reasoning about the types;
         // we entirely leave it to the compiler to prove the necessary information.
         // SAFETY:
-        // - Thanks to mixed macro hygiene, the `Upper` generic we introduce cannot possibly
-        //   be used in `$varying_type`. The lower bound is not even given a name.
+        // - Thanks to mixed macro hygiene, the `'lower` and `Upper` generics we introduce cannot
+        //   possibly be used in `$varying_type`.
         // - A combination of orphan rules and the `#[unsafe(not_a_foreign_fundamental_type)]`
         //   annotation ensure that the second safety condition is met.
         // - `__ImplyBound` is left at its default.
-        unsafe impl<$($varying_single_use_param,)? Upper: $crate::UpperBound, $($params)*>
-        $crate::WithLifetime<$varying_single_use, '_, Upper> for $family_type
+        unsafe impl<$($varying_single_use_param,)? 'lower, $($params)* Upper: $crate::UpperBound>
+        $crate::WithLifetime<$varying_single_use, 'lower, Upper> for $family_type
         where
             $(
                 $($varying_wb)*,
@@ -847,14 +847,15 @@ macro_rules! __impl_with_lifetime {
             type Is = $varying_type;
 
             fn protect_macros_from_code_injection_via_hygiene_projection(upper: Upper) -> Upper {
+                let _: &'lower ();
                 upper
             }
         }
 
         // SAFETY: `ChangeBounds::prove_equal` is implemented with the function body `{ varying }`,
         // so this implementation is certainly sound.
-        unsafe impl<$varying, Upper: $crate::UpperBound, $($params)*>
-        $crate::ChangeBounds<$varying, '_, Upper, $varying_type> for $family_type
+        unsafe impl<$varying, 'lower, $($params)* Upper: $crate::UpperBound>
+        $crate::ChangeBounds<$varying, 'lower, Upper, $varying_type> for $family_type
         where
             $(
                 $($varying_wb)*,
@@ -871,7 +872,7 @@ macro_rules! __impl_with_lifetime {
                 // This mostly-useless where-bound prevents `$params`, `$varying_wb`, and
                 // `$non_varying_wb` from injecting code that switches out this impl,
                 // thanks to hygiene protection.
-                Upper:,
+                &'lower ():,
             {
                 varying
             }
@@ -901,7 +902,7 @@ macro_rules! __impl_covariant_family {
         // we entirely leave it to the compiler to prove the necessary information.
         // SAFETY: `CovariantFamily::prove_covariance` is implemented with the function body
         // `{ long }`, so the implementation is certainly sound.
-        unsafe impl<'lower, Upper: $crate::UpperBound, $($params)*>
+        unsafe impl<'lower, $($params)* Upper: $crate::UpperBound>
         $crate::CovariantFamily<'lower, Upper>
         for $family_type
         where
@@ -949,7 +950,7 @@ macro_rules! __impl_contravariant_family {
         // we entirely leave it to the compiler to prove the necessary information.
         // SAFETY: `ContravariantFamily::prove_contravariance` is implemented with the function body
         // `{ short }`, so the implementation is certainly sound.
-        unsafe impl<'lower, Upper: $crate::UpperBound, $($params)*>
+        unsafe impl<'lower, $($params)* Upper: $crate::UpperBound>
         $crate::ContravariantFamily<'lower, Upper>
         for $family_type
         where
@@ -962,10 +963,10 @@ macro_rules! __impl_contravariant_family {
                 short: $crate::RawVarying<'short, 'lower, Upper, Self>,
             ) -> $crate::RawVarying<'long, 'lower, Upper, Self>
             where
-                // This where-bound prevents `$params`, `$varying_wb`, and `$non_varying_wb` from
-                // injecting code that switches out this impl, thanks to hygiene protection.
                 Upper: 'long,
                 'long: 'short,
+                // This where-bound prevents `$params`, `$varying_wb`, and `$non_varying_wb` from
+                // injecting code that switches out this impl, thanks to hygiene protection.
                 'short: 'lower,
             {
                 short
@@ -1336,6 +1337,7 @@ macro_rules! __impl_generic_wrapper {
             type Is = $($varying_name)::+<$($varying_generics)*>;
 
             fn protect_macros_from_code_injection_via_hygiene_projection(upper: Upper) -> Upper {
+                let _: &'lower ();
                 upper
             }
         }

@@ -14,8 +14,10 @@
 #![warn(clippy::missing_inline_in_public_items, reason = "trivial impls")]
 
 use core::mem::transmute;
-use alloc::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 use alloc::borrow::{Cow, ToOwned};
+#[cfg(target_has_atomic = "ptr")]
+use alloc::sync::Arc;
 
 use variance_family::{Unvarying, Varying, VaryingRef, VaryingRefMut, WithLifetime};
 
@@ -445,6 +447,7 @@ impl SetDefaultViewMut<'_, '_> for String {
 //  `sync::Arc`
 // ================================================================
 
+#[cfg(target_has_atomic = "ptr")]
 // SAFETY: Same as `PointerViewKind`'s impl of `StableView` for `Rc<T>` above.
 unsafe impl<'a, 'data, T: ?Sized + 'data> StableView<'a, 'data, Arc<T>>
 for PointerViewKind
@@ -469,10 +472,12 @@ for PointerViewKind
     }
 }
 
+#[cfg(target_has_atomic = "ptr")]
 impl<'data, T: ?Sized + 'data> SetDefaultView<'_, 'data> for Arc<T> {
     type Default = PointerViewKind;
 }
 
+#[cfg(target_has_atomic = "ptr")]
 // SAFETY: We will go through each of the three operations. The `'data` upper bound
 // doesn't particularly matter. As noted by `StableViewMut`, the second and third operations
 // aren't particularly noteworthy either; our `view` impl doesn't do something strange that would
@@ -504,12 +509,11 @@ for PointerViewKind
     }
 }
 
+#[cfg(target_has_atomic = "ptr")]
 impl<'data, T: ?Sized + 'data> SetDefaultViewMut<'_, 'data> for Arc<T> {
     type DefaultMut = PointerViewKind;
 }
 
-// SAFETY: Same as that of `Rc<T>`'s impl of `StableClone` above.
-//
 /// # Robust Guarantee
 /// The conceptual pool associated with an `Arc<T>` value is the set of all (semantic) owners of a
 /// strong ref of the `Arc` allocation (possibly including `Arc<U>` values from unsizing coercions,
@@ -521,6 +525,8 @@ impl<'data, T: ?Sized + 'data> SetDefaultViewMut<'_, 'data> for Arc<T> {
 /// In particular, the conceptual pool associated with a view is nonempty iff the strong count is
 /// nonzero and the value (not refcounts) of the `Arc` allocation has not been mutated since the
 /// view was taken.
+#[cfg(target_has_atomic = "ptr")]
+// SAFETY: Same as that of `Rc<T>`'s impl of `StableClone` above.
 unsafe impl<T: ?Sized> StableClone<'_> for Arc<T> {}
 
 

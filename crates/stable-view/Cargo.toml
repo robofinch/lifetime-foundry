@@ -21,7 +21,7 @@ all-features = true
 
 [dependencies]
 variance-family = { workspace = true, default-features = false }
-either = { workspace = true, default-features = false, optional = true }
+either          = { workspace = true, default-features = false, optional = true }
 
 [features]
 default     = ["std"]

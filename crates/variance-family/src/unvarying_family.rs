@@ -23,7 +23,7 @@ pub struct Unvarying<T: ?Sized>(PhantomData<fn() -> T>);
 phantom_zst_methods!(impl<{T: ?Sized}> _ for Unvarying<{T}>);
 
 unvarying! {
-    impl<{T: ?Sized}> (Co+Contra)variantFamily<'_, _>
+    impl<{T: ?Sized,}> (Co+Contra)variantFamily<'_, _>
     // SAFETY: `Unvarying` is defined in this crate.
     for #[unsafe(not_a_foreign_fundamental_type)] Unvarying<T> as T
 }

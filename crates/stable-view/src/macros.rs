@@ -185,9 +185,31 @@
 /// ## Example
 ///
 /// ```
+/// use core::fmt::Debug;
 /// use stable_view::recursive_view;
-/// mod path { mod to { mod your {
-///     struct Type<'a, const FOO: u8, V, T1, T2: ?Sized + Debug>(&'a u8, T1, V, T2);
+///
+/// pub mod path { pub mod to { pub mod your {
+///     pub struct Type<'a, const FOO: u8, V, T1, T2: ?Sized + core::fmt::Debug>(
+///         pub &'a u8,
+///         pub T1,
+///         pub V,
+///         pub T2,
+///     );
+///
+///     variance_family::generic_wrapper! {
+///         impl<{
+///             'a,
+///             const FOO: u8,
+///             V,
+///             // SAFETY: `Type<'_, _, V, T1, T2>` is covariant over `T1` and `T2`.
+///             #[unsafe(covariant)] T1 (Is: Sized),
+///             // SAFETY: `Type<'_, _, V, T1, T2>` is covariant over `T1` and `T2`.
+///             #[unsafe(covariant)] T2 (Is: core::fmt::Debug),
+///         }> ([Co] + [Contra])variantFamily<'_, _>
+///         // SAFETY: `Type` is defined in this crate.
+///         for #[unsafe(not_a_foreign_fundamental_type)] Type<..>
+///         where {T2: ?Sized + core::fmt::Debug}
+///     }
 /// }}}
 ///
 /// recursive_view! {
@@ -207,7 +229,8 @@
 ///         (T1, V1, map_1),
 ///
 ///         // After each `Vi` parameter, you can optionally include where-bounds on
-///         // `<Vi as StableView<'a, 'stable, 'data, Ti>>::{View, ViewMut}`.
+///         // `<Vi as StableView<'a, 'stable, 'data, Ti>>::{View, ViewMut}`,
+///         // `CustomView<'_, '_, '_, Ti, Vi>`, and `CustomViewMut<'_, '_, '_, Ti, Vi>`.
 ///         //
 ///         // The lifetime parameters are (intentionally) not exposed to you, and you cannot access
 ///         // them due to macro hygiene. Therefore, this macro must expose these separate
@@ -342,7 +365,13 @@ macro_rules! recursive_view {
                 'a, 'data,
                 $(
                     $t,
-                    $v: $crate::StableView<'a, 'data, $t, $(View: $($view_bounds)*)?>,
+                    $v: $crate::StableView<
+                        'a, 'data, $t,
+                        $(View:
+                            $crate::__macro::variance_family::CovariantFamily<'a, &'data (), Is: $($view_bounds)*>
+                            + $($view_bounds)*
+                        )?
+                    >,
                 )*
                 $($($impl_params)*)?
             > $crate::StableView<'a, 'data, $($name)::+<$($($generics)*,)* $($t),*>>
@@ -446,7 +475,15 @@ macro_rules! recursive_view {
                     $t,
                     $v: $crate::StableViewMut<
                         'a, 'data, $t,
-                        $(View: $($view_bounds)*, ViewMut: $($view_bounds)*)?
+                        $(View:
+                            $crate::__macro::variance_family::CovariantFamily<'a, &'data (), Is: $($view_bounds)*>
+                            // Alas, we need this trailing comma :|
+                            + $($view_bounds)*,
+                        )?
+                        $(ViewMut:
+                            $crate::__macro::variance_family::CovariantFamily<'a, &'data (), Is: $($view_mut_bounds)*>
+                            + $($view_mut_bounds)*
+                        )?
                     >,
                 )*
                 $($($impl_params)*)?
@@ -629,7 +666,10 @@ macro_rules! recursive_view {
                     $(
                         $crate::DefaultViewKind: $crate::StableView<
                             'a, 'data, $t,
-                            $(View: $($view_bounds)*)?
+                            $(View:
+                                $crate::__macro::variance_family::CovariantFamily<'a, &'data (), Is: $($view_bounds)*>
+                                + $($view_bounds)*
+                            )?
                         >,
                     )*
                     $($($where_bounds)*)?

@@ -319,7 +319,7 @@ where
 /// shorthand for `Varying<'varying, T>`.
 ///
 /// More precisely, for any `'short, 'long, 'lower, 'other_lower, 'upper, 'other_upper` where:
-/// ```rust
+/// ```ignore
 /// 'long: 'short,
 /// Self: WithLifetime<'short, 'lower, 'upper> + WithLifetime<'long, 'other_lower, 'other_upper>,
 /// ```
@@ -435,7 +435,7 @@ pub unsafe trait CovariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<'low
 /// of `Upper`).
 ///
 /// More precisely, for any `'short, 'long, 'lower, 'other_lower, 'upper, 'other_upper` where:
-/// ```rust
+/// ```ignore
 /// 'long: 'short,
 /// Self: WithLifetime<'short, 'lower, 'upper> + WithLifetime<'long, 'other_lower, 'other_upper>,
 /// ```

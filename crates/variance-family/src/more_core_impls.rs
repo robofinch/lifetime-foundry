@@ -50,7 +50,7 @@ concrete_types!(core::sync::atomic::AtomicI64, core::sync::atomic::AtomicU64);
 
 #[cfg(target_has_atomic = "ptr")]
 unvarying! {
-    impl<{T}> (Co+Contra)variantFamily<'_, _>
+    impl<{T,}> (Co+Contra)variantFamily<'_, _>
     // SAFETY: `variance-family` is allowed to implement traits for this atomic type
     // in `core`, `alloc`, `std`, or `variance-family`.
     for #[unsafe(not_a_foreign_fundamental_type)] core::sync::atomic::AtomicPtr<T>
