@@ -69,6 +69,8 @@ clippy *args:
                     supertrait_item_shadowing,\
                     unqualified_local_imports\
                 ) \
+                -Aclippy::inline_modules \
+                -Aclippy::inline_trait_bounds \
                 -Wfuzzy_provenance_casts \
                 -Wlossy_provenance_casts \
                 -Wmultiple_supertrait_upcastable \
@@ -90,6 +92,8 @@ test *args:
                     supertrait_item_shadowing,\
                     unqualified_local_imports\
                 ) \
+                -Aclippy::inline_modules \
+                -Aclippy::inline_trait_bounds \
                 -Wfuzzy_provenance_casts \
                 -Wlossy_provenance_casts \
                 -Wmultiple_supertrait_upcastable \
