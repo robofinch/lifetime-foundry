@@ -10,7 +10,7 @@
 //! </style>
 #![cfg_attr(doc, doc = include_str!("../README.md"))]
 
-#![expect(missing_docs, clippy::missing_docs_in_private_items, reason = "under development; TODO: remove")]
+#![expect(clippy::missing_docs_in_private_items, reason = "under development; TODO: remove")]
 
 #![no_std]
 
@@ -22,13 +22,12 @@ mod slot;
 mod erased_slot;
 mod error;
 
-mod map_data_impl;
+mod non_null_option;
 
 mod full_impl;
 mod wrappers;
 
 mod closure_traits;
-mod const_hack;
 
 
 pub use self::error::TryAttachError;
@@ -40,28 +39,13 @@ pub use self::{
 };
 
 
-/// Complicated machinery that enables transformations that can change *every* generic parameter
-/// of `AttachableRefFull<'_, '_, _, _, _, _>`.
+/// Complicated machinery that enables transformations that can change every self-reference
+/// parameter of `AttachableRefFull<'_, '_, _, _, _, _>`.
 ///
-/// This code should only be needed for *very* advanced usage.
+/// This code should only be needed for advanced usage.
 /// (This machinery is also used internally.)
 #[expect(clippy::module_name_repetitions, reason = "`full::MapFull` is acceptable")]
 pub mod map_full {
     pub use crate::full_impl::{FullResult, RefMutResult, RefResult};
-    pub use crate::full_impl::{MapFull, MapFullAndClone, MappedRef, MappedRefMut};
-}
-
-/// Machinery for mapping the backing `Data` values without invalidating self-references.
-#[expect(clippy::module_name_repetitions, reason = "`map_data::MapDataStrict(est)` is acceptable")]
-pub mod map_data {
-    pub use crate::map_data_impl::{
-        BlanketMapData, DynDrop, MapDataStrict, MapDataStrictest, MapViaAlloc, MapViaAltMove,
-        MapViaMove, MapViaMoveInto,
-    };
-
-    #[cfg(feature = "alloc")]
-    pub use crate::map_data_impl::{ErasedBox, ErasedRc, RcUninit};
-
-    #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
-    pub use crate::map_data_impl::{ArcUninit, ErasedArc};
+    pub use crate::full_impl::{MapFull, MapFullClone};
 }

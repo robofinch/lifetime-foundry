@@ -6,8 +6,11 @@
 
 #![expect(clippy::undocumented_unsafe_blocks, reason = "TODO")]
 
-use core::{convert::Infallible, marker::PhantomData, mem::ManuallyDrop};
-use core::fmt::{Debug, Formatter, Result as FmtResult};
+use core::{convert::Infallible, marker::PhantomData};
+use core::{
+    fmt::{Debug, Formatter, Result as FmtResult},
+    hint::{assert_unchecked, unreachable_unchecked},
+};
 
 use stable_view::{CustomView, CustomViewMut, DefaultViewKind, StableClone, StableView, StableViewMut};
 use variance_family::{Lend, LendFamily, Unvarying, Varying};
@@ -15,7 +18,6 @@ use variance_family::{Lend, LendFamily, Unvarying, Varying};
 use crate::{erased_slot::ErasedSelfRefSlot, error::TryAttachError};
 use crate::{
     closure_traits::{ViewMutToLend, ViewToLend},
-    const_hack::{deref_const_hack, split_tuple_const_hack, unwrap_no_ref_unchecked_const_hack},
     slot::{SelfRefCases, SelfRefSlot},
 };
 
@@ -558,58 +560,20 @@ where
     /// [`NoRef`]: SelfRefCases::NoRef
     #[inline]
     #[must_use]
-    pub const unsafe fn into_raw_pieces(self) -> (SelfRefSlot<'data, 'upper, N, R, M>, Data) {
-        let this = ManuallyDrop::new(self);
-        let this_ref = deref_const_hack(&this);
-
-        let slot = &raw const this_ref.slot;
-
-        // SAFETY: This is a standard approach for moving out of a field of a type that
-        // implements `Drop`, after disarming the destructor... though, in this case, we don't
-        // implement `Drop`; we need to do this because Rust currently cannot reason that
-        // `let Self { slot, variance, data } = self` doesn't need to execute a non-`const`
-        // destructor. Since `this.slot` is not necessarily `Copy`, we can  consider `this.slot` to
-        // be left semantically uninitialized, and only use this `slot` value from then on. Since
-        // `*this` is forgotten thanks to `ManuallyDrop`, it doesn't matter that `this.slot` is no
-        // longer initialized; we don't touch it again. Formally:
-        // - `slot` is valid for reads, since:
-        //   - `slot` is non-null, since it points to an in-bounds part of a Rust allocation.
-        //   - `slot` is dereferenceable, since it points to a single allocation which it has
-        //     provenance over, since (as per the documentation of `addr_of!`) it inherited the
-        //     provenance and permissions of `this_ref` over the fields of `this`, and we have not
-        //     yet touched `this` again (which could end the lifetime of `this_ref`).
-        //   - The read does not race with any other accesses to `slot`'s pointee, since this
-        //     function has exclusive ownership over `this`.
-        //   - We are not interleaving accesses to `this.slot` between references and pointers;
-        //     access is nested. (`&this -> this_ref -> slot`, then we pop `slot` and don't
-        //     use `slot` again, then `&this -> this_ref -> data`, then we pop `data`. Sufficiently
-        //     long lifetimes within the body of this function can keep the lifetimes of `this_ref`
-        //     and `&this` alive for long enough for the nesting.)
-        // - `slot` is properly aligned, since `Self` is not `repr(packed)`, implying that
-        //   the `this.slot` field is properly aligned for the type of `this.slot`.
-        // - The pointee is, trivially, a valid value of type `MaybeUninit<..>`.
-        // Additionally, we do not trigger a double-drop.
-        let slot = unsafe { slot.read() };
-
+    pub unsafe fn into_raw_pieces(self) -> (SelfRefSlot<'data, 'upper, N, R, M>, Data) {
         // SAFETY: As robustly guaranteed by the `slot` field, the erased lifetime can be soundly
         // unerased into any `'stable` lifetime such that `'data: 'stable` and, at least until
         // `'stable` ends, `self.data` is not manipulated in a way that invalidates `self.slot`.
         // Our caller has `unsafe`ly asserted that `self.slot` has no `'stable` references to
         // `self.data`, so *no* manipulation of `self.data` (during at least `'data`) can invalidate
         // `self.slot`. Therefore, we can soundly choose `'stable = 'data`.
-        let slot = unsafe { slot.into_unerased::<'data>() };
+        let slot = unsafe { self.slot.into_unerased::<'data>() };
 
-        let data: *const SpeedBump<Data> = &raw const this_ref.data;
-        // `SpeedBump` is `repr(transparent)` (and not `repr(packed)`).
-        let data: *const Data = data.cast();
         // SAFETY INVARIANT: Our caller has `unsafe`ly asserted that `self.slot` has no `'stable`
         // references to `self.data`, so *no* manipulation of `self.data` (during at least `'data`)
         // can invalidate the `slot` value. Therefore, completely exposing `self.data` to
         // the caller's code is sound.
-        // SAFETY: See above safety comment for `slot.read()`, which can be mostly treated as
-        // `s/slot/data`, except for the discussion of interleaved vs nested accesses, which does
-        // talk about `data`.
-        let data = unsafe { data.read() };
+        let data = self.data.speed_bump_inner;
 
         (slot, data)
     }
@@ -632,13 +596,16 @@ where
     ///
     /// [`NoRef`]: SelfRefCases::NoRef
     #[inline]
-    pub const fn try_into_owned(self) -> Result<(N, Data), Self> {
+    pub fn try_into_owned(self) -> Result<(N, Data), Self> {
         if matches!(self.get(), SelfRefCases::NoRef(_)) {
-            let slot_and_data = unsafe { self.into_raw_pieces() };
+            let (slot, data) = unsafe { self.into_raw_pieces() };
 
-            split_tuple_const_hack!(slot_and_data, slot, data);
-
-            let no_ref = unsafe { unwrap_no_ref_unchecked_const_hack(slot) };
+            let no_ref = match slot {
+                SelfRefCases::NoRef(no_ref) => no_ref,
+                SelfRefCases::Ref(_) | SelfRefCases::RefMut(_) => {
+                    unsafe { unreachable_unchecked() }
+                }
+            };
 
             Ok((no_ref, data))
         } else {
@@ -690,13 +657,13 @@ where
     /// # Errors
     /// If `Data` is `Some`, `self` is returned back.
     #[inline]
-    pub const fn try_into_owned_slot(self) -> Result<SelfRefSlot<'data, 'upper, N, R, M>, Self> {
+    pub fn try_into_owned_slot(self) -> Result<SelfRefSlot<'data, 'upper, N, R, M>, Self> {
         if self.data.speed_bump_inner.is_none() {
-            let slot_and_data = unsafe { self.into_raw_pieces() };
+            let (slot, none) = unsafe { self.into_raw_pieces() };
 
-            split_tuple_const_hack!(slot_and_data, slot, data);
-
-            let _ignore_none = ManuallyDrop::new(data);
+            unsafe {
+                assert_unchecked(none.is_none());
+            };
 
             Ok(slot)
         } else {
@@ -745,10 +712,8 @@ where
     /// actually needed for the self-reference slot.
     #[inline]
     #[must_use]
-    pub const fn into_owned_slot(self) -> SelfRefSlot<'data, 'upper, N, R, M> {
-        let slot_and_data = unsafe { self.into_raw_pieces() };
-
-        split_tuple_const_hack!(slot_and_data, slot, _unit);
+    pub fn into_owned_slot(self) -> SelfRefSlot<'data, 'upper, N, R, M> {
+        let (slot, ()) = unsafe { self.into_raw_pieces() };
 
         slot
     }
@@ -823,10 +788,9 @@ where
     #[inline]
     #[must_use]
     pub const fn get_data(&self) -> &Data {
-        #[expect(clippy::uninhabited_references, reason = "`&Infallible` is unreachable")]
-        match self.get() {
+        match *self.get() {
             SelfRefCases::NoRef(_) | SelfRefCases::Ref(_) => &self.data.speed_bump_inner,
-            SelfRefCases::RefMut(infallible) => match *infallible {},
+            SelfRefCases::RefMut(infallible) => match infallible {},
         }
     }
 }
@@ -909,7 +873,7 @@ where
     // If `Data` is `()`, set it.
     // pub fn set_data
 
-    // If `Data` is currently `()`, set it. Else give back the value you tried to set.
+    // If `Data` is currently `None`, set it. Else give back the value you tried to set.
     // pub fn try_set_data
 }
 
@@ -922,11 +886,10 @@ where
 {
     #[inline]
     fn clone(&self) -> Self {
-        #[expect(clippy::uninhabited_references, reason = "`&Infallible` is unreachable")]
         let (slot, data) = match self.get_full() {
             SelfRefCases::NoRef((no_ref, data)) => (SelfRefCases::NoRef(no_ref.clone()), data),
             SelfRefCases::Ref((self_ref, data)) => (SelfRefCases::Ref(self_ref.clone()), data),
-            SelfRefCases::RefMut(infallible)  => match *infallible {},
+            SelfRefCases::RefMut(&infallible)  => match infallible {},
         };
 
         // Even if this panics and unwinds, the fact that `self.data` is immutably borrowed
@@ -950,32 +913,18 @@ where
 {
     #[expect(clippy::missing_inline_in_public_items, reason = "in formatting, size matters more")]
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let mut f_struct = f.debug_struct("AttachableRefFull");
+        let data = self.try_get_data();
 
-        match self.get_full() {
-            SelfRefCases::NoRef((no_ref, data)) => {
-                let slot = SelfRefCases::NoRef::<_, Infallible, Infallible>(no_ref);
-                f_struct
-                    .field("slot",     &slot)
-                    .field("variance", &self.variance)
-                    .field("data",     &data)
-            }
-            SelfRefCases::Ref((self_ref, data)) => {
-                let slot = SelfRefCases::Ref::<Infallible, _, Infallible>(self_ref);
-                f_struct
-                    .field("slot",     &slot)
-                    .field("variance", &self.variance)
-                    .field("data",     &data)
-            }
-            SelfRefCases::RefMut(self_ref_mut) => {
-                let slot = SelfRefCases::RefMut::<Infallible, Infallible, _>(self_ref_mut);
-                f_struct
-                    .field("slot",     &slot)
-                    .field("variance", &self.variance)
-                    .field("data",     &format_args!("<exclusively borrowed>"))
-            }
+        let data_dbg: &dyn Debug = if let Some(data) = data.as_ref() {
+            data
+        } else {
+            &format_args!("<exclusively borrowed>")
         };
 
-        f_struct.finish()
+        f.debug_struct("AttachableRefFull")
+            .field("slot",     &self.get())
+            .field("variance", &self.variance)
+            .field("data",     data_dbg)
+            .finish()
     }
 }

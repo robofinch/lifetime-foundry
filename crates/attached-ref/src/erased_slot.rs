@@ -4,7 +4,7 @@ use core::mem::{ManuallyDrop, MaybeUninit, transmute};
 
 use variance_family::LendFamily;
 
-use crate::{const_hack::deref_const_hack, slot::SelfRefSlot};
+use crate::slot::SelfRefSlot;
 
 
 /// A version of [`SelfRefSlot<'stable, 'upper, N, R, M>`] with its `'stable` and `'upper`
@@ -135,9 +135,9 @@ where
     /// is enforced by the type system, making this requirement sensible.
     #[inline]
     #[must_use]
-    pub const unsafe fn into_unerased<'stable>(self) -> SelfRefSlot<'stable, 'erased, N, R, M> {
+    pub unsafe fn into_unerased<'stable>(self) -> SelfRefSlot<'stable, 'erased, N, R, M> {
         let this = ManuallyDrop::new(self);
-        let this_ref = deref_const_hack(&this);
+        let this_ref: &Self = &this;
 
         let erased = &raw const this_ref.erased;
 

@@ -492,15 +492,13 @@ pub unsafe trait ContravariantFamily<'lower, Upper: UpperBound>: LifetimeFamily<
 pub trait LendFamily<Upper = MaxUpperBound>
 where
     Upper: UpperBound,
-    Self: for<'lower> CovariantFamily<'lower, Upper>
-        + for<'varying, 'lower> WithLifetime<'varying, 'lower, Upper, Is: Sized>,
+    Self: for<'lower> CovariantFamily<'lower, Upper, Is: Sized>,
 {}
 
 impl<Upper, T> LendFamily<Upper> for T
 where
     Upper: UpperBound,
-    T: for<'lower> CovariantFamily<'lower, Upper>
-        + for<'varying, 'lower> WithLifetime<'varying, 'lower, Upper, Is: Sized>,
+    T: for<'lower> CovariantFamily<'lower, Upper, Is: Sized>,
 {}
 
 /// A slightly shorter and more legible alias for
