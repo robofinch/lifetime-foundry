@@ -4,10 +4,11 @@
 
 #![expect(unsafe_code, reason = "assert variance and soundness of lifetime extension")]
 
-use core::{cmp::Ordering, mem::transmute, pin::Pin, ptr::NonNull};
+use core::{cmp::Ordering, pin::Pin, ptr::NonNull};
 use core::{
     fmt::{Debug, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
+    mem::{forget, transmute},
     ops::{Deref, DerefMut},
 };
 use alloc::boxed::Box;
@@ -67,6 +68,12 @@ use crate::{
 /// invalidate such pointers and references). (Aliasing rules may also invalidate those pointers and
 /// references due to interactions among themselves, as normal.)
 ///
+/// ### Move-like operations
+/// [`Self::into_raw`] and [`Self::from_raw`] are semantically equivalent to moves of `Self`
+/// (though operations on the raw pointer could invalidate other pointers). Simply materializing
+/// a `&mut Self` (or, currently, `Box<Self>` due to its `noalias` semantics), and not actually
+/// using it, is equivalent to moving that `Self`.
+///
 /// ### "Methods provided by this crate"
 ///
 /// This qualifier is intended to exclude pathological third-party implementations and pathological
@@ -104,7 +111,7 @@ pub struct AliasableBox<T: ?Sized> {
     /// must uphold the aliasing guarantees of this type by ensuring the following:
     /// - Methods of `AliasableBox` which take a `Self` or `Pin<Self>` argument (or `Drop::drop`)
     ///   must convert `self.ptr` into a `Box<T>` exactly once, with `Box::from_raw` (though pinning
-    ///   invariants must also be upheld).
+    ///   invariants must also be upheld) or equivalent (up to `noalias`).
     /// - Methods of `AliasableBox` which take an `&mut Self` argument are permitted
     ///   to convert `self.ptr` to a `&mut T` or `&T`.
     /// - Methods of `AliasableBox` which take an `&Self` argument are permitted to convert
@@ -119,9 +126,13 @@ pub struct AliasableBox<T: ?Sized> {
     ///   guarantee that a value not valid for type `T` may be written to that location. (Such
     ///   a guarantee would be extremely incorrect. Again, we don't do that, this is included for
     ///   completeness.)
-    /// - Only [`Self::from_box`] is permitted to directly construct `Self`. (This is included to
-    ///   head off any possible invariants about never overwriting `self.ptr` with an invalid
-    ///   pointer and whatnot.)
+    /// - Only [`Self::from_box`] and [`Self::from_raw`] are permitted to directly construct `Self`.
+    ///   (This is included to head off any possible invariants about never overwriting `self.ptr`
+    ///   with an invalid pointer and whatnot.) Since `Self::from_raw(_)` is equivalent to
+    ///   calling `Self::from_box(Box::from_raw(_))`, minus `noalias` and UB checks, most of our
+    ///   documentation only needs to consider `Self::from_box`.
+    /// - [`Self::into_raw`] and [`Self::from_raw`] are semantically equivalent to moves of `Self`,
+    ///   and the caller is responsible for the raw pointer.
     ///
     /// In particular, methods taking `Self` or `Pin<Self>` (or `Drop::drop`), `&mut Self`, or
     /// `&Self` which directly manipulate `self.ptr` should cite the first, second, or third
@@ -171,10 +182,10 @@ pub struct AliasableBox<T: ?Sized> {
     ///
     /// ### Converting `self.ptr` into a reference
     /// - It's always properly aligned; none of `AliasableBox`'s `&mut` methods mutate the
-    ///   pointer itself, and it is constructed from a necessarily-properly-aligned `&mut T`
-    ///   reference in [`Self::from_box`].
+    ///   pointer itself, and it is constructed from a necessarily-properly-aligned `Box<T>`
+    ///   in [`Self::from_box`].
     /// - It's non-null (it's in a `NonNull`).
-    /// - It's dereferenceable, since it is constructed from a necessarily-dereferenceable `&mut T`,
+    /// - It's dereferenceable, since it is constructed from a necessarily-dereferenceable `Box<T>`,
     ///   and we do not permit the user to deallocate or otherwise invalidate the pointee's
     ///   allocation. Moreover, the provenance should not be invalidated; it is constructed from a
     ///   `Box<U>` where `U` is a subtype of `T` (accounting for covariance), implying that
@@ -280,7 +291,7 @@ impl<T: ?Sized> AliasableBox<T> {
         let ptr = Box::into_raw(boxed);
         // SAFETY: `Box::into_raw` guarantees that its return value is non-null.
         let ptr = unsafe { NonNull::new_unchecked(ptr) };
-        // SAFETY INVARIANT: using the explicit constructor is only permitted in
+        // SAFETY INVARIANT: using the explicit constructor is permitted in
         // `AliasableBox::from_box`, which is this function.
         Self { ptr }
     }
@@ -288,11 +299,57 @@ impl<T: ?Sized> AliasableBox<T> {
     /// Convert an aliasable version of `Box<T>` back into its source form.
     #[inline]
     #[must_use]
-    pub fn into_box(self) -> Box<T> {
+    pub fn into_box(this: Self) -> Box<T> {
         // SAFETY: this is a method of `AliasableBox` with a `Self` argument which directly
-        // manipulates `self.ptr`, so as per the first safety invariant of `self.ptr`, we can (and
-        // must) consume `self.ptr` into a `Box<T>` with `Box::from_raw`.
-        unsafe { Box::from_raw(self.ptr.as_ptr()) }
+        // manipulates `this.ptr`, so as per the first safety invariant of `this.ptr`, we can (and
+        // must) consume `this.ptr` into a `Box<T>` with `Box::from_raw`.
+        unsafe { Box::from_raw(Self::into_raw(this)) }
+    }
+
+    /// Equivalent of chaining [`Self::into_box`] and [`Box::into_raw`], but avoids materialing a
+    /// `Box` (and thereby asserting `noalias` over the pointee).
+    ///
+    /// This operation is, semantically, a move of `self`.
+    #[inline]
+    #[must_use]
+    pub const fn into_raw(this: Self) -> *mut T {
+        // SAFETY INVARIANT: this is a method of `AliasableBox` with a `Self` argument which
+        // directly manipulates `this.ptr`, so as per the first safety invariant of `self.ptr`, we
+        // can (and must) consume `self.ptr` into a `Box<T>` with `Box::from_raw` (or equivalent).
+        // This operation is semantically equivalent to
+        // `Box::into_raw(Box::from_raw(self.ptr.as_ptr()))`, minus the `noalias`.
+        let ptr = this.ptr.as_ptr();
+
+        // Moving `this` does not invalidate `ptr`.
+        #[expect(
+            clippy::mem_forget,
+            reason = "It is **almost always** better to wrap a type `ManuallyDrop`, but getting a \
+                      reference to the inner value in `const` requires `unsafe`. This approach \
+                      avoids `unsafe`, and moving `this` into `forget` does not invalidate `ptr`",
+        )]
+        forget(this);
+
+        // Now `ptr` has unique ownership.
+        ptr
+    }
+
+    /// Equivalent of chaining [`Box::from_raw`] and [`Self::from_box`], but avoids materialing a
+    /// `Box` (and thereby asserting `noalias` over the pointee).
+    ///
+    /// This operation is, semantically, a move.
+    ///
+    /// # Safety
+    /// Same as [`Box::from_raw`].
+    #[inline]
+    #[must_use]
+    pub const unsafe fn from_raw(ptr: *mut T) -> Self {
+        // SAFETY: The pointer of a `Box` is guaranteed to be non-null, so the safety conditions
+        // of `Box::from_raw`, which the caller asserts, require that `ptr` is non-null.
+        let ptr = unsafe { NonNull::new_unchecked(ptr) };
+
+        // SAFETY INVARIANT: using the explicit constructor is permitted in
+        // `AliasableBox::from_raw`, which is this function.
+        Self { ptr }
     }
 
     /// Convert an `Pin<Box<T>>` into an aliasable version.
@@ -326,7 +383,7 @@ impl<T: ?Sized> AliasableBox<T> {
         // value is pinned (so by the pinning invariant, if `T: !Unpin`, we never move out of
         // the reference or otherwise invalidate the pointee until the pointee is dropped).
         let boxed = unsafe { Pin::into_inner_unchecked(pin) };
-        let boxed: Box<T> = boxed.into_box();
+        let boxed: Box<T> = Self::into_box(boxed);
         Box::into_pin(boxed)
     }
 }
