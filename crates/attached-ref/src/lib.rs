@@ -10,7 +10,7 @@
 //! </style>
 #![cfg_attr(doc, doc = include_str!("../README.md"))]
 
-#![expect(clippy::missing_docs_in_private_items, reason = "under development; TODO: remove")]
+#![expect(missing_docs, clippy::missing_docs_in_private_items, clippy::missing_errors_doc, reason = "under development; TODO: remove")]
 
 #![no_std]
 
@@ -19,33 +19,30 @@ extern crate alloc;
 
 
 mod slot;
-mod erased_slot;
-mod error;
 
+mod init_support;
+mod mapping_support;
 mod non_null_option;
 
-mod full_impl;
+mod attachable_ref_full;
 mod wrappers;
 
-mod closure_traits;
 
-
-pub use self::error::TryAttachError;
 pub use self::{
-    closure_traits::{ViewMutToLend, ViewToLend},
-    full_impl::AttachableRefFull,
+    attachable_ref_full::AttachableRefFull,
+    init_support::{TryAttachError, ViewMutToLend, ViewToLend},
     slot::{SelfRefCases, SelfRefSlot},
     wrappers::{AttachableRef, AttachableRefMut, AttachedRef, AttachedRefMut},
 };
 
 
-/// Complicated machinery that enables transformations that can change every self-reference
-/// parameter of `AttachableRefFull<'_, '_, _, _, _, _>`.
-///
-/// This code should only be needed for advanced usage.
-/// (This machinery is also used internally.)
-#[expect(clippy::module_name_repetitions, reason = "`full::MapFull` is acceptable")]
-pub mod map_full {
-    pub use crate::full_impl::{FullResult, RefMutResult, RefResult};
-    pub use crate::full_impl::{MapFull, MapFullClone};
+/// Supporting tools for changing generic parameters of `AttachableRefFull<'_, '_, _, _, _, _>`.
+pub mod mapping {
+    pub use crate::mapping_support::{FullResult, RefMutResult, RefResult};
+    pub use crate::mapping_support::{DynDrop, MapBorrowedNonMut, MapNonMut, MapSlot};
+
+    #[cfg(feature = "alloc")]
+    pub use crate::mapping_support::{ErasedAliasableBox, ErasedBox, ErasedRc};
+    #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+    pub use crate::mapping_support::ErasedArc;
 }

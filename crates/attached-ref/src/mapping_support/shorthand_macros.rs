@@ -41,7 +41,7 @@ macro_rules! __RefResult {
             (
                 $crate::SelfRefSlot<
                     $stable, $new_upper,
-                    $Mapper::NewN, $Mapper::NewR, ::core::convert::Infallible,
+                    $Mapper::NewN, $Mapper::NewR, $Mapper::NewM,
                 >,
                 $Mapper::Ok,
             ),

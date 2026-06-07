@@ -27,4 +27,4 @@ either          = { workspace = true, default-features = false, optional = true 
 
 [features]
 default = ["alloc"]
-alloc   = []
+alloc   = ["stable-view/alloc"]

@@ -2,7 +2,7 @@ use core::convert::Infallible;
 
 use variance_family::LendFamily;
 
-use crate::full_impl::AttachableRefFull;
+use crate::attachable_ref_full::AttachableRefFull;
 
 
 #[expect(missing_debug_implementations, missing_docs, reason = "TODO")]
