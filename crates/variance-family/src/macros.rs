@@ -104,15 +104,15 @@
 ///
 /// Therefore, to be thoroughly sound, this macro requires a
 /// `#[unsafe(not_a_foreign_fundamental_type)]` annotation on the family type.
-///
 /// (Though, that annotation is slightly inaccurate for internal usage of this macro in
 /// `variance-family`.)
 ///
+/// # Lints
+///
 /// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
 /// its `unsafe impl`s are mostly encapsulated, but calls an `unsafe` function to denote the
-/// remaining `unsafe` assertion. Currently, the `unsafe_code` and
-/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
-/// will reliably work with hits macro.
+/// remaining `unsafe` assertion. Currently, the `unsafe_code` lint sadly might not trigger, but
+/// perhaps it will someday be possible for this macro to reliably trigger that lint.
 ///
 /// [`WithLifetime`]: crate::traits::WithLifetime
 #[macro_export]
@@ -136,11 +136,12 @@ macro_rules! covariant {
 /// # Safety
 /// Same as [`covariant`]; a `#[unsafe(not_a_foreign_fundamental_type)]` marker is required.
 ///
+/// # Lints
+///
 /// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
 /// its `unsafe impl`s are mostly encapsulated, but calls an `unsafe` function to denote the
-/// remaining `unsafe` assertion. Currently, the `unsafe_code` and
-/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
-/// will reliably work with hits macro.
+/// remaining `unsafe` assertion. Currently, the `unsafe_code` lint sadly might not trigger, but
+/// perhaps it will someday be possible for this macro to reliably trigger that lint.
 ///
 /// [`covariant`]: crate::covariant
 #[macro_export]
@@ -197,11 +198,12 @@ macro_rules! contravariant {
 /// # Safety
 /// Same as [`covariant`]; a `#[unsafe(not_a_foreign_fundamental_type)]` marker is required.
 ///
+/// # Lints
+///
 /// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
 /// its `unsafe impl`s are mostly encapsulated, but calls an `unsafe` function to denote the
-/// remaining `unsafe` assertion. Currently, the `unsafe_code` and
-/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
-/// will reliably work with hits macro.
+/// remaining `unsafe` assertion. Currently, the `unsafe_code` lint sadly might not trigger, but
+/// perhaps it will someday be possible for this macro to reliably trigger that lint.
 ///
 /// [`covariant`]: crate::covariant
 #[macro_export]
@@ -358,7 +360,8 @@ pub(crate) use concrete_types;
 ///         #[unsafe(covariant)] U (Is: Sized + Debug),
 ///         // No attribute. Not treated as a variance family.
 ///         V,
-///         // `W` is required to implement `UnvaryingFamily`.
+///         // `W` is required to implement `UnvaryingFamily`, but it is treated as a trivial
+///         // variance family. (Perhaps this could be useful in very niche situations.)
 ///         #[unvarying] W (Is: Sized),
 ///     }> ([Co] + [Contra])variantFamily<'_, _>
 ///     // SAFETY: `Foo` is defined in this crate.
@@ -392,12 +395,6 @@ pub(crate) use concrete_types;
 /// **MUST** be correct about them. Additionally, there is an attribute used to fulfill
 /// [`WithLifetime`]'s safety conditions.
 ///
-/// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
-/// its `unsafe impl`s are mostly encapsulated, but calls `unsafe` functions to denote the
-/// remaining `unsafe` assertions. Currently, the `unsafe_code` and
-/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
-/// will reliably work with hits macro.
-///
 /// ## `unsafe(covariant)` and `unsafe(contravariant)`
 /// The varying type **must** be covariant over parameters marked with `unsafe(covariant)` and must
 /// be contravariant over parameters marked with `unsafe(contravariant)`.
@@ -429,7 +426,7 @@ pub(crate) use concrete_types;
 /// then you *should* get a compilation error.
 /// (This includes all current stable `#[fundamental]` types.)
 ///
-/// However, for a `#[fundamental]` type were to not already implement a variance family trait,
+/// However, for a `#[fundamental]` type which doesn't already implement a variance family trait,
 /// you could violate the safety condition of [`WithLifetime`] with this macro. *Hypothetically*,
 /// someone (possibly including the crate which defined the `#[fundamental]` type) could rely on
 /// "this type cannot soundly implement [`WithLifetime`]" and find a way to escalate that to
@@ -437,9 +434,15 @@ pub(crate) use concrete_types;
 ///
 /// Therefore, to be thoroughly sound, this macro requires a
 /// `#[unsafe(not_a_foreign_fundamental_type)]` annotation on the family type.
-///
 /// (Though, that annotation is slightly inaccurate for internal usage of this macro in
 /// `variance-family`.)
+///
+/// # Lints
+///
+/// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
+/// its `unsafe impl`s are mostly encapsulated, but calls an `unsafe` function to denote the
+/// remaining `unsafe` assertion. Currently, the `unsafe_code` lint sadly might not trigger, but
+/// perhaps it will someday be possible for this macro to reliably trigger that lint.
 ///
 /// [`WithLifetime`]: crate::traits::WithLifetime
 #[macro_export]
@@ -529,12 +532,6 @@ macro_rules! generic_wrapper {
 /// ```
 ///
 /// # Safety
-/// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
-/// its `unsafe impl`s are mostly encapsulated, but calls `unsafe` functions to denote the
-/// remaining `unsafe` assertions. Currently, the `unsafe_code` and
-/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
-/// will reliably work with hits macro.
-///
 /// ## `unsafe(covariant)`
 /// The varying type **must** be covariant over its parameter marked with `unsafe(covariant)`.
 ///
@@ -549,6 +546,13 @@ macro_rules! generic_wrapper {
 ///
 /// ## `unsafe(not_a_foreign_fundamental_type)`
 /// See [`generic_wrapper`]; a `#[unsafe(not_a_foreign_fundamental_type)]` marker is required.
+///
+/// # Lints
+///
+/// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
+/// its `unsafe impl`s are mostly encapsulated, but calls an `unsafe` function to denote the
+/// remaining `unsafe` assertion. Currently, the `unsafe_code` lint sadly might not trigger, but
+/// perhaps it will someday be possible for this macro to reliably trigger that lint.
 ///
 /// [`generic_wrapper`]: crate::generic_wrapper
 #[macro_export]
@@ -612,11 +616,12 @@ macro_rules! varying_ref_wrapper {
 /// # Safety
 /// See [`generic_wrapper`]; a `#[unsafe(not_a_foreign_fundamental_type)]` marker is required.
 ///
+/// # Lints
+///
 /// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
 /// its `unsafe impl`s are mostly encapsulated, but calls an `unsafe` function to denote the
-/// remaining `unsafe` assertion. Currently, the `unsafe_code` and
-/// `clippy::undocumented_unsafe_blocks` lints sadly might not trigger, but perhaps they someday
-/// will reliably work with hits macro.
+/// remaining `unsafe` assertion. Currently, the `unsafe_code` lint sadly might not trigger, but
+/// perhaps it will someday be possible for this macro to reliably trigger that lint.
 ///
 /// [`generic_wrapper`]: crate::generic_wrapper
 #[macro_export]
@@ -846,10 +851,7 @@ macro_rules! __impl_with_lifetime {
         {
             type Is = $varying_type;
 
-            fn protect_macros_from_code_injection_via_hygiene_projection(upper: Upper) -> Upper {
-                let _: &'lower ();
-                upper
-            }
+            fn protect_macros_from_code_injection_via_hygiene_projection((): &'lower ()) {}
         }
 
         // SAFETY: `ChangeBounds::prove_equal` is implemented with the function body `{ varying }`,
@@ -915,11 +917,11 @@ macro_rules! __impl_covariant_family {
                 long: $crate::RawVarying<'long, 'lower, Upper, Self>,
             ) -> $crate::RawVarying<'short, 'lower, Upper, Self>
             where
+                Upper: 'long,
+                'long: 'short,
                 // This where-bound prevents `$params`, `$varying_wb`, and `$non_varying_wb` from
                 // injecting code that switches out this impl,
                 // thanks to hygiene protection.
-                Upper: 'long,
-                'long: 'short,
                 'short: 'lower,
             {
                 long
@@ -1336,10 +1338,7 @@ macro_rules! __impl_generic_wrapper {
         {
             type Is = $($varying_name)::+<$($varying_generics)*>;
 
-            fn protect_macros_from_code_injection_via_hygiene_projection(upper: Upper) -> Upper {
-                let _: &'lower ();
-                upper
-            }
+            fn protect_macros_from_code_injection_via_hygiene_projection((): &'lower ()) {}
         }
 
         // SAFETY: See the first bullet point in the safety comment of the `WithLifetime` impl.
@@ -1379,7 +1378,7 @@ macro_rules! __impl_generic_wrapper {
                 OtherUpper: $crate::UpperBound,
                 // Protect this impl against code injection, via hygiene protection.
                 // See above for more.
-                Upper:,
+                &'lower ():,
             {
                 varying.cast()
             }
@@ -1425,13 +1424,13 @@ macro_rules! __impl_generic_wrapper {
                 long: $crate::RawVarying<'long, 'lower, Upper, Self>,
             ) -> $crate::RawVarying<'short, 'lower, Upper, Self>
             where
+                Upper: 'long,
+                'long: 'short,
                 // Prevents `$where_bounds` and `$*is_bound` from pathologically injecting code,
                 // thanks to hygiene protection. See above for more. Though, note in particular
                 // that `impl_params` contains data that we manually parsed. It cannot
-                // pathologically inject code, so introducing `Upper` after expanding those
+                // pathologically inject code, so introducing `'lower` after expanding those
                 // parameters leaves this hygiene protection intact.
-                Upper: 'long,
-                'long: 'short,
                 'short: 'lower,
             {
                 long.cast()
@@ -1473,10 +1472,10 @@ macro_rules! __impl_generic_wrapper {
                 short: $crate::RawVarying<'short, 'lower, Upper, Self>,
             ) -> $crate::RawVarying<'long, 'lower, Upper, Self>
             where
-                // Prevents `$where_bounds` and `$*is_bound` from pathologically injecting code,
-                // thanks to hygiene protection. See above for more.
                 Upper: 'long,
                 'long: 'short,
+                // Prevents `$where_bounds` and `$*is_bound` from pathologically injecting code,
+                // thanks to hygiene protection. See above for more.
                 'short: 'lower,
             {
                 short.cast()
@@ -1519,10 +1518,10 @@ macro_rules! __impl_varying_ref_wrapper {
                 long: $crate::RawVarying<'long, 'lower, &'upper (), Self>,
             ) -> $crate::RawVarying<'short, 'lower, &'upper (), Self>
             where
-                // This where-bound prevents `bound` and `where_bounds` from injecting code that
-                // switches out this impl, thanks to hygiene protection of `'upper`.
                 &'upper (): 'long,
                 'long: 'short,
+                // This where-bound prevents `bound` and `where_bounds` from injecting code that
+                // switches out this impl, thanks to hygiene protection of `'lower`.
                 'short: 'lower,
             {
                 long.cast()
@@ -1567,10 +1566,10 @@ macro_rules! __impl_varying_ref_mut_wrapper {
                 long: $crate::RawVarying<'long, 'lower, &'upper (), Self>,
             ) -> $crate::RawVarying<'short, 'lower, &'upper (), Self>
             where
-                // This where-bound prevents `bound` and `where_bounds` from injecting code that
-                // switches out this impl, thanks to hygiene protection of `'upper`.
                 &'upper (): 'long,
                 'long: 'short,
+                // This where-bound prevents `bound` and `where_bounds` from injecting code that
+                // switches out this impl, thanks to hygiene protection of `'lower`.
                 'short: 'lower,
             {
                 long
@@ -1612,11 +1611,7 @@ macro_rules! __impl_varying_with_lifetime {
         {
             type Is = $($varying_name)::+<'varying, $varying_t::Is>;
 
-            fn protect_macros_from_code_injection_via_hygiene_projection(
-                upper: &'upper (),
-            ) -> &'upper () {
-                upper
-            }
+            fn protect_macros_from_code_injection_via_hygiene_projection((): &'lower ()) {}
         }
 
         // SAFETY: See the first bullet point in the safety comment of the `WithLifetime` impl.
@@ -1638,8 +1633,8 @@ macro_rules! __impl_varying_with_lifetime {
                 Self: $crate::WithLifetime<'varying, 'other_lower, OtherUpper>,
                 OtherUpper: $crate::UpperBound,
                 // This where-bound prevents `bound` and `where_bounds` from injecting code that
-                // switches out this impl, thanks to hygiene protection of `Upper`.
-                Upper:,
+                // switches out this impl, thanks to hygiene protection of `'lower`.
+                &'lower ():,
             {
                 varying.cast()
             }
@@ -1650,14 +1645,14 @@ macro_rules! __impl_varying_with_lifetime {
 /// Denotes that `#[unsafe(covariant)]` or `#[unsafe(contravariant)]` may be used.
 ///
 /// # Safety
-/// No actual safety condition. Simply used to trigger the `unsafe_code` lint.
+/// No actual safety condition. Simply used to (try to) trigger the `unsafe_code` lint.
 #[doc(hidden)]
 pub const unsafe fn assert_variance() {}
 
 /// Denotes that `#[unsafe(not_a_foreign_fundamental_type)]` was used.
 ///
 /// # Safety
-/// No actual safety condition. Simply used to trigger the `unsafe_code` lint.
+/// No actual safety condition. Simply used to (try to) trigger the `unsafe_code` lint.
 #[doc(hidden)]
 pub const unsafe fn assert_not_a_foreign_fundamental_type() {}
 
