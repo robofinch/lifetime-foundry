@@ -4,18 +4,30 @@
 //! [LICENSE-APACHE]: https://github.com/robofinch/lifetime-foundry/blob/main/LICENSE-APACHE
 //! [LICENSE-MIT]: https://github.com/robofinch/lifetime-foundry/blob/main/LICENSE-MIT
 //!
+//! [`StableViewer`]: StableViewer
+//! [`StableViewer<'a, 'stable, 'data, Data>`]: StableViewer
+//! [`StableViewer::view`]: StableViewer::view
+//! [`StableViewerMut`]: StableViewerMut
+//! [`StableViewerMut::view_mut`]: StableViewerMut::view_mut
+//!
 //! [`StableView`]: StableView
 //! [`StableViewMut`]: StableViewMut
 //! [`StableClone`]: StableClone
-//! [`AliasableRefMut<'_, T>`]: AliasableRefMut
-#![cfg_attr(feature = "alloc", doc = " [`AliasableBox<T>`]: AliasableBox")]
-//! [`PointerViewKind`]: PointerViewKind
-//! [`RecursiveViewKind<(VT, VE)>`]: RecursiveViewKind
+//!
+//! [`ReferenceViewKind`]: ReferenceViewKind
+//! [`StableReferenceView`]: StableReferenceView
+//! [`StableReferenceViewMut`]: StableReferenceViewMut
+//!
+//! [`RecursiveViewKind`]: RecursiveViewKind
+//! [`RecursiveViewKind<(ViewT, ViewE)>`]: RecursiveViewKind
+//! [`recursive_view!`]: recursive_view
+//!
 //! [`UnstableViewKind`]: UnstableViewKind
+//!
 //! [`DefaultViewKind`]: DefaultViewKind
-//! [`SetDefaultView`]: SetDefaultView
-//! [`SetDefaultViewMut`]: SetDefaultViewMut
-#![cfg_attr(feature = "alloc", doc = " [`Box::leak`]: alloc::boxed::Box::leak")]
+//! [`DefaultStableView`]: DefaultStableView
+//! [`DefaultStableViewMut`]: DefaultStableViewMut
+//!
 //! [`variance-family`]: variance_family
 //!
 //! <style>
@@ -33,10 +45,13 @@ extern crate std;
 
 
 mod traits;
-mod view_kinds;
 mod macros;
 mod aliasable;
 mod viewer;
+mod viewer_families;
+
+mod view_kinds;
+mod provided_view_kinds;
 
 mod core_impls;
 
@@ -59,13 +74,16 @@ pub mod __macro {
 
 pub use self::{
     aliasable::{AliasableRefMut, VaryingAliasableRefMut},
+    provided_view_kinds::{UnitViewKind, UnstableViewKind, ViewerViewKind},
     traits::{CustomView, CustomViewMut, StableClone, StableView, StableViewMut},
     view_kinds::{
-        CollectionViewKind, DefaultViewKind, PointerViewKind, RecursiveViewKind, SetDefaultView,
-        SetDefaultViewMut, UnitViewKind, UnstableViewKind, View, ViewMut, ZeroSizedViewKind,
+        CollectionViewKind, DefaultStableView, DefaultStableViewMut, DefaultViewKind,
+        RecursiveViewKind, ReferenceViewKind, StableReferenceView, StableReferenceViewMut, View,
+        ViewMut, ZeroSizedViewKind,
     },
+    viewer::{StableViewer, StableViewerMut},
+    viewer_families::{VaryingStableViewer, VaryingStableViewerMut},
 };
-pub use self::viewer::Viewer;
 #[cfg(feature = "alloc")]
 pub use self::aliasable::AliasableBox;
 

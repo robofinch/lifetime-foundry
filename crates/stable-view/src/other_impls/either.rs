@@ -2,7 +2,7 @@
 //!
 //! - `either::Either`.
 
-#![expect(unsafe_code, reason = "implement the unsafe `aliasable-view` traits")]
+#![expect(unsafe_code, reason = "implement the unsafe `stable-view` traits")]
 #![warn(clippy::missing_inline_in_public_items, reason = "trivial impls")]
 
 use either::Either;

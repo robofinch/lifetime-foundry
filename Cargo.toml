@@ -18,6 +18,7 @@ stable-view     = { version = "0.1.0", path = "crates/stable-view",     default-
 variance-family = { version = "0.1.0", path = "crates/variance-family", default-features = false }
 
 either          = { version = "1.15.0", default-features = false }
+implied-bounds  = { version = "0.1.0",  default-features = false }
 
 
 # Out of the lints that do anything (non-deprecated clippy lints, non-migration rust lints),

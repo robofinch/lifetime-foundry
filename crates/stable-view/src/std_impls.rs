@@ -2,7 +2,7 @@
 //!
 //! - `std::sync::{MutexGuard, RwLockReadGuard, RwLockWriteGuard}`.
 
-#![expect(unsafe_code, reason = "implement the unsafe `aliasable-view` traits")]
+#![expect(unsafe_code, reason = "implement the unsafe `stable-view` traits")]
 #![warn(clippy::missing_inline_in_public_items, reason = "trivial impls")]
 
 use core::mem::transmute;
@@ -12,7 +12,7 @@ use variance_family::{Unvarying, VaryingRef, VaryingRefMut};
 
 use crate::{
     traits::{StableView, StableViewMut},
-    view_kinds::{PointerViewKind, SetDefaultView, SetDefaultViewMut},
+    view_kinds::{DefaultStableView, DefaultStableViewMut, ReferenceViewKind},
 };
 
 
@@ -20,22 +20,7 @@ use crate::{
 //  `sync::MutexGuard`
 // ================================================================
 
-// SAFETY:
-// Until the source value's `'b` lifetime parameter expires *or* the source value is dropped
-// and releases its exclusive borrow rights over the referent, we know that:
-// - Moving the `MutexGuard` does not invalidate immutable references to its `T` referent, because a
-//   `MutexGuard` argument doesn't hold exclusivity for its whole scope, only until it drops;
-//   therefore, it cannot have `Box`'s `noalias` semantics.
-// - Non-`DerefMut` coercions (among those in Rust 1.85) of the `MutexGuard` do not invalidate its
-//   `T` referent for the same reason above.
-// - No sound immutable operation on the `MutexGuard` can invalidate shared references to the `T`
-//   referent; otherwise, that could invalidate other references obtained from other shared
-//   references to the same `MutexGuard`.
-//
-// (After the `'b` lifetime parameter expires, the source `Mutex` could be dropped,
-// and that's fine.)
-unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, MutexGuard<'b, T>>
-for PointerViewKind
+impl<'a, 'b, 'data, T> StableView<'a, 'data, MutexGuard<'b, T>> for ReferenceViewKind
 where
     'b: 'data,
     T: ?Sized + 'b,
@@ -50,7 +35,8 @@ where
     {
         let stable_eq_a: &'a T = data;
 
-        // SAFETY: See the "`transmute` in `view` Implementation" section of the `StableView` docs.
+        // SAFETY: See "`transmute` in `view(_mut)` Implementation" in the `StableView::view` docs.
+        // This is essentially the same as the impl for `core::cell::RefMut<'b, T>`.
         unsafe {
             transmute::<
                 &'a T,
@@ -60,29 +46,15 @@ where
     }
 }
 
-impl<'b, 'data, T> SetDefaultView<'_, 'data> for MutexGuard<'b, T>
+impl<'b, 'data, T> DefaultStableView<'_, 'data> for MutexGuard<'b, T>
 where
     'b: 'data,
     T: ?Sized + 'b,
 {
-    type Default = PointerViewKind;
+    type Default = ReferenceViewKind;
 }
 
-// SAFETY:
-// Until the source value's `'b` lifetime parameter expires *or* the source value is dropped
-// and releases its exclusive borrow rights over the referent, we know that:
-// - Moving the `MutexGuard` does not invalidate immutable references to its `T` referent, because a
-//   `MutexGuard` argument doesn't hold exclusivity for its whole scope, only until it drops;
-//   therefore, it cannot have `Box`'s `noalias` semantics.
-// - Coercing the `MutexGuard` (except via deref coercions, among those in Rust 1.85) does not
-//   invalidate its `T` referent for the same reason above, noting that the referent is not stored
-//   inline.
-// - No-ops on the source data value are fine.
-//
-// (After the `'b` lifetime parameter expires, the source `RefCell` could be dropped,
-// and that's fine.)
-unsafe impl<'a, 'b, 'data, T> StableViewMut<'a, 'data, MutexGuard<'b, T>>
-for PointerViewKind
+impl<'a, 'b, 'data, T> StableViewMut<'a, 'data, MutexGuard<'b, T>> for ReferenceViewKind
 where
     'b: 'data,
     T: ?Sized + 'b,
@@ -97,8 +69,8 @@ where
     {
         let stable_eq_a: &'a mut T = data;
 
-        // SAFETY: See the "`transmute` in `view_mut` Implementation" section of the
-        // `StableViewMut` docs.
+        // SAFETY: See "`transmute` in `view(_mut)` Implementation" in the `StableView::view` docs.
+        // This is essentially the same as the impl for `core::cell::RefMut<'b, T>`.
         unsafe {
             transmute::<
                 &'a mut T,
@@ -108,12 +80,12 @@ where
     }
 }
 
-impl<'b, 'data, T> SetDefaultViewMut<'_, 'data> for MutexGuard<'b, T>
+impl<'b, 'data, T> DefaultStableViewMut<'_, 'data> for MutexGuard<'b, T>
 where
     'b: 'data,
     T: ?Sized + 'b,
 {
-    type DefaultMut = PointerViewKind;
+    type DefaultMut = ReferenceViewKind;
 }
 
 
@@ -121,22 +93,7 @@ where
 //  `sync::RwLockReadGuard`
 // ================================================================
 
-// SAFETY:
-// Until the source value's `'b` lifetime parameter expires *or* the source value is dropped
-// and releases its shared borrow rights over the referent, we know that:
-// - Moving the `RwLockReadGuard` does not invalidate immutable references to its `T` referent,
-//   since the `T` referent is stored elsewhere (in a `RwLock`) and `cell::RwLockReadGuard` is
-//   expected to alias other shared references (and thus does not assert `noalias` when moved),
-// - Coercing the `RwLockReadGuard` (mong Rust 1.85 coercions) does not invalidate its `T` referent
-//   for the same reasons above and below,
-// - No sound immutable operation on the `RwLockReadGuard` can invalidate shared references to the
-//   `T` referent; otherwise, that could invalidate other references obtained from other shared
-//   references to the same `RwLockReadGuard`.
-//
-// (After the `'b` lifetime parameter expires, the source `RwLock` could be dropped,
-// and that's fine.)
-unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, RwLockReadGuard<'b, T>>
-for PointerViewKind
+impl<'a, 'b, 'data, T> StableView<'a, 'data, RwLockReadGuard<'b, T>> for ReferenceViewKind
 where
     'b: 'data,
     T: ?Sized + 'b,
@@ -151,7 +108,8 @@ where
     {
         let stable_eq_a: &'a T = data;
 
-        // SAFETY: See the "`transmute` in `view` Implementation" section of the `StableView` docs.
+        // SAFETY: See "`transmute` in `view(_mut)` Implementation" in the `StableView::view` docs.
+        // This is essentially the same as the impl for `core::cell::Ref<'b, T>`.
         unsafe {
             transmute::<
                 &'a T,
@@ -161,12 +119,12 @@ where
     }
 }
 
-impl<'b, 'data, T> SetDefaultView<'_, 'data> for RwLockReadGuard<'b, T>
+impl<'b, 'data, T> DefaultStableView<'_, 'data> for RwLockReadGuard<'b, T>
 where
     'b: 'data,
     T: ?Sized + 'b,
 {
-    type Default = PointerViewKind;
+    type Default = ReferenceViewKind;
 }
 
 
@@ -174,22 +132,7 @@ where
 //  `sync::RwLockWriteGuard`
 // ================================================================
 
-// SAFETY:
-// Until the source value's `'b` lifetime parameter expires *or* the source value is dropped
-// and releases its exclusive borrow rights over the referent, we know that:
-// - Moving the `RwLockWriteGuard` does not invalidate immutable references to its `T` referent,
-//   because a `RwLockWriteGuard` argument doesn't hold exclusivity for its whole scope, only until
-//   it drops; therefore, it cannot have `Box`'s `noalias` semantics.
-// - Coercing the `RwLockWriteGuard` (except via `DerefMut`, among Rust 1.85 coercions) does not
-//   invalidate its `T` referent for the same reason above.
-// - No sound immutable operation on the `RwLockWriteGuard` can invalidate shared references to
-//   the `T` referent; otherwise, that could invalidate other references obtained from other shared
-//   references to the same `RwLockWriteGuard`.
-//
-// (After the `'b` lifetime parameter expires, the source `RwLock` could be dropped,
-// and that's fine.)
-unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, RwLockWriteGuard<'b, T>>
-for PointerViewKind
+impl<'a, 'b, 'data, T> StableView<'a, 'data, RwLockWriteGuard<'b, T>> for ReferenceViewKind
 where
     'b: 'data,
     T: ?Sized + 'b,
@@ -204,7 +147,8 @@ where
     {
         let stable_eq_a: &'a T = data;
 
-        // SAFETY: See the "`transmute` in `view` Implementation" section of the `StableView` docs.
+        // SAFETY: See "`transmute` in `view(_mut)` Implementation" in the `StableView::view` docs.
+        // This is essentially the same as the impl for `core::cell::RefMut<'b, T>`.
         unsafe {
             transmute::<
                 &'a T,
@@ -214,29 +158,15 @@ where
     }
 }
 
-impl<'b, 'data, T> SetDefaultView<'_, 'data> for RwLockWriteGuard<'b, T>
+impl<'b, 'data, T> DefaultStableView<'_, 'data> for RwLockWriteGuard<'b, T>
 where
     'b: 'data,
     T: ?Sized + 'b,
 {
-    type Default = PointerViewKind;
+    type Default = ReferenceViewKind;
 }
 
-// SAFETY:
-// Until the source value's `'b` lifetime parameter expires *or* the source value is dropped
-// and releases its exclusive borrow rights over the referent, we know that:
-// - Moving the `RwLockWriteGuard` does not invalidate immutable references to its `T` referent,
-//   because a `RwLockWriteGuard` argument doesn't hold exclusivity for its whole scope, only until
-//   it drops; therefore, it cannot have `Box`'s `noalias` semantics.
-// - Coercing the `RwLockWriteGuard` (except via derefs, among Rust 1.85 coercions) does not
-//   invalidate its `T` referent for the same reason above, noting that the referent is not stored
-//   inline.
-// - No-ops on the source data value are fine.
-//
-// (After the `'b` lifetime parameter expires, the source `RefCell` could be dropped,
-// and that's fine.)
-unsafe impl<'a, 'b, 'data, T> StableViewMut<'a, 'data, RwLockWriteGuard<'b, T>>
-for PointerViewKind
+impl<'a, 'b, 'data, T> StableViewMut<'a, 'data, RwLockWriteGuard<'b, T>> for ReferenceViewKind
 where
     'b: 'data,
     T: ?Sized + 'b,
@@ -251,8 +181,8 @@ where
     {
         let stable_eq_a: &'a mut T = data;
 
-        // SAFETY: See the "`transmute` in `view_mut` Implementation" section of the
-        // `StableViewMut` docs.
+        // SAFETY: See "`transmute` in `view(_mut)` Implementation" in the `StableView::view` docs.
+        // This is essentially the same as the impl for `core::cell::RefMut<'b, T>`.
         unsafe {
             transmute::<
                 &'a mut T,
@@ -262,10 +192,10 @@ where
     }
 }
 
-impl<'b, 'data, T> SetDefaultViewMut<'_, 'data> for RwLockWriteGuard<'b, T>
+impl<'b, 'data, T> DefaultStableViewMut<'_, 'data> for RwLockWriteGuard<'b, T>
 where
     'b: 'data,
     T: ?Sized + 'b,
 {
-    type DefaultMut = PointerViewKind;
+    type DefaultMut = ReferenceViewKind;
 }

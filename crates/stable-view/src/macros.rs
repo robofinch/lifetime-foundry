@@ -77,7 +77,8 @@
 /// ```
 ///
 /// # Safety
-/// You will need to read the `Syntax` section for full context.
+/// You will need to read the below `Syntax` section and the [`concepts_and_safety`] module's docs
+/// for full context.
 ///
 /// - All view components in `SelfWithoutParams<.., T1, .., Tn>` must be values of type `T1`, ..,
 ///   or `Tn` values stored with no internally mutable wrappers around them within `Self`.
@@ -94,14 +95,16 @@
 ///   application of (and values produced from) [`Clone::clone`] and [`Clone::clone_from`]. To be
 ///   clear, each source view component **must** have at least one clone in the new value, and each
 ///   view component in the new value must be a clone of some view component in the source value.
-/// - If `StableClone = true` is set in this macro's input, then `'stable` data in ***any***
-///   `StableView` view of this type must either be data valid for at least `'data` or come from a
-///   view component. For clarity, giving a `'stable` reference *to a view component* is NOT
-///   permitted; it being possible for a view component to give out a `'stable` reference to part
-///   of that view component is what is permitted.
+/// - If `StableClone = true` is set in this macro's input, then the view components must be the
+///   ***only possible source*** of stable data in ***any*** `StableView` or `StableViewMut` view
+///   of this type.
 ///
-///   For example, `Box<T>` sets `StableClone = false`, because even though it currently
-///   seems like it'd be impossible to soundly hand out a `&'stable T` from a `Box<T>`, a future
+///   For clarity, giving a `'stable` reference *to a view component* is NOT permitted; it being
+///   possible for a view component to give out a `'stable` (and in particular "stable") reference
+///   to part of that view component is what is permitted.
+///
+///   For example, `Box<T>` sets `StableClone = false`, because even though it currently seems like
+///   it'd be impossible to soundly hand out a stable reference to the `T` in a `Box<T>`, a future
 ///   version of Rust might remove `Box`'s `noalias` semantics. See [`StableClone`] for more details
 ///   and examples.
 /// - Any view components in the `SelfWithoutParams<.., T1, .., Tn>` value returned by your `map` or
@@ -242,10 +245,11 @@
 ///     // Either `Default = true;` or `Default = false;`. Determines whether
 ///     // `SetDefaultView` and `SetDefaultViewMut` are implemented (to choose `DefaultViewKind`).
 ///     Default = true;
-///     // `'stable` data either comes from the `T1` or `T2` view components, or from `'static` data
-///     // (which certainly outlives `'data`). Only the implementing type matters, so we only
-///     // need to consider `'a = 'static` and `V: 'static` when making this judgement.
-///     StableClone = true;
+///     // Stable data either comes from the `T1` or `T2` view components... OR from `V`, which
+///     // is not a view component. `V` could be `AliasableBox<Foo>` and hand out a `&'stable Foo`
+///     // in some other view of this type. Therefore, setting `StableClone = true` would be
+///     // unsound, even though `V: 'static`.
+///     StableClone = false;
 ///
 ///     // `Upper: UpperBound, T1, .., Tn` impl parameters are included automatically.
 ///     // To place bounds on any of the `Ti` parameters, use where-bounds.
@@ -254,7 +258,8 @@
 ///     // Remember, if the type contains values of type `V` which are not considered view
 ///     // components, then you **must** ensure that `V: 'static` so that non-view components
 ///     // do not have non-`'static` references.
-///     unsafe impl<.., {const FOO: u8, V: 'static + Clone}> MapView<..>
+///     // The trailing comma is mandatory.
+///     unsafe impl<.., {const FOO: u8, V: 'static + Clone,}> MapView<..>
 ///     // Start by listing any type parameters not among `T1, .., Tn`. Those last parameters
 ///     // are included for you. Each parameter goes in its own set of braces.
 ///     for path::to::your::Type<{'static}, {FOO}, {V}, ..>
@@ -302,6 +307,7 @@
 /// [`CustomViewMut`]: crate::traits::CustomViewMut
 /// [`DefaultViewKind`]: crate::view_kinds::DefaultViewKind
 /// [`RecursiveViewKind`]: crate::view_kinds::RecursiveViewKind
+/// [`concepts_and_safety`]: crate::concepts_and_safety
 #[macro_export]
 macro_rules! recursive_view {
     // NOTE: `view_bounds`, `view_mut_bounds`, `impl_params`, `generics`, `where_bounds`,
@@ -342,27 +348,9 @@ macro_rules! recursive_view {
             reason = "lint is moved to `unsafe_recursive_view` for a clearer error message",
         )]
         const _: () = {
-            // SAFETY:
-            // Moves, coercions, or immutable operations (in any quantity and order) on `data`
-            // cannot invalidate any `'static` data, so we need only care about the potentially
-            // non-`'static` data in `data.view()`, which come solely from view components produced
-            // from calling `.view()` on view components of `data`.
-            // (This fact is a mixture of reasoning about the below impl and about the safety
-            // requirements of this macro.)
-            // Moves (or permitted coercions, or immutable operations on) `data` (in any
-            // quantity and order) can move (or coerce, or perform immutable operations on) its
-            // view components, but since the view kinds are here required to implement `StableView`
-            // for those view components (and since code injection is prevented), that does not
-            // invalidate their views.
-            // (Note that we use the fact that performing immutable operations on `data` cannot
-            // perform mutable operations on its view components; this is why we forbade internal
-            // mutability.)
-            //
-            // Thus, moves, permitted coercions, and immutable operations (in any quantity and
-            // order) on `data` do not invalidate the value returned by `data.view()`, and since we
-            // also enforce the `'data` upper bound, this implementation is sound.
-            unsafe impl<
+            impl<
                 'a, 'data,
+                $($($impl_params)*)?
                 $(
                     $t,
                     $v: $crate::StableView<
@@ -373,7 +361,6 @@ macro_rules! recursive_view {
                         )?
                     >,
                 )*
-                $($($impl_params)*)?
             > $crate::StableView<'a, 'data, $($name)::+<$($($generics)*,)* $($t),*>>
             for $crate::RecursiveViewKind<($($v,)*)>
             where
@@ -408,6 +395,14 @@ macro_rules! recursive_view {
                     let $this_ref = data;
                     $(
                         // SAFETY: `'stable = 'a` is guaranteed to be sound.
+                        // Additionally, note: why do we do a `transmute` below and set
+                        // `'stable = 'a` here, instead of using `'stable` here? Basically, not
+                        // handing lifetime-extended references to the `$map_impl` is easier to
+                        // reason about. The safety requirements of `recursive_view` speak of inputs
+                        // and outputs of `$map_impl`, and say that the `map_i` functions have to be
+                        // used for the transformation, but don't restrict whatever else `$map_impl`
+                        // might do. A pathological `$map_impl` is not allowed to give an invalid
+                        // output, sure; but who knows what it might do to lifetime-extended inputs.
                         let $map = |view_component: &'a _| unsafe {
                             <$v as $crate::StableView<'a, 'data, $t>>::view::<'a>(
                                 view_component,
@@ -428,17 +423,28 @@ macro_rules! recursive_view {
                         clippy::useless_transmute,
                         reason = "if `'stable` is unused, this is a no-op",
                     )]
-                    // SAFETY: See the "`transmute` in `view` Implementation" section of the
-                    // `StableView` docs.
-                    // Additionally, note: why do we do this `transmute` here and set
-                    // `'stable = 'a` above, instead of using `'stable` above?
-                    // Basically, not handing lifetime-extended references to the `$map_impl` is
-                    // easier to reason about. The safety requirements of `recursive_view` speak
-                    // of inputs and outputs of `$map_impl`, and say that the `map_i` functions have
-                    // to be used for the transformation, but don't restrict whatever else
-                    // `$map_impl` might do. A pathological `$map_impl` is not allowed to give an
-                    // invalid output, sure; but who knows what it might do to lifetime-extended
-                    // inputs.
+                    // SAFETY: See "`transmute` in `view(_mut)` Implementation" in the
+                    // `StableView::view` docs.
+                    // Moves, coercions, or immutable operations (in any quantity and order) on
+                    // `data` cannot invalidate any `'static` data, so we need only care about the
+                    // potentially non-`'static` data in `data.view()`, which come solely from view
+                    // components produced from calling `.view()` on view components of `data`.
+                    // (This fact is a mixture of reasoning about the below impl and about the
+                    // safety requirements of this macro.)
+                    // Moves (or permitted coercions, or immutable operations) of `data` (in any
+                    // quantity and order) can move (or permittedly coerce, or perform immutable
+                    // operations on) its view components, but since the view kinds are here
+                    // required to implement `StableView` for those view components (and since code
+                    // injection is prevented), that does not invalidate the `'stable` data of their
+                    // views.
+                    // (Note that we use the fact that performing immutable operations on `data`
+                    // cannot perform mutable operations on its view components; this is why we
+                    // forbade internal mutability.)
+                    //
+                    // Thus, moves, permitted coercions, and immutable operations (in any quantity
+                    // and order) on `data` do not invalidate the value returned by `data.view()`,
+                    // and since we also enforce the `'data` upper bound, this implementation is
+                    // sound.
                     unsafe {
                         ::core::mem::transmute::<
                             $crate::CustomView<
@@ -454,23 +460,9 @@ macro_rules! recursive_view {
                 }
             }
 
-            // SAFETY:
-            // Moves, non-deref coercions (in any quantity and order), or no-ops of `data` cannot
-            // invalidate any `'static` data, so we need only care about the potentially
-            // non-`'static` data in `data.view_mut()`, which come solely from view components
-            // produced from calling `.view_mut()` on view components of `data`.
-            // (This fact is a mixture of reasoning about the below impl and about the safety
-            // requirements of this macro.)
-            // Moving (or permitted coercing, or performing no-ops on) `data` (in any quantity and
-            // order) can move (or coerce, or perform no-ops on) its view components, but since
-            // they are here required to implement `StableViewMut` (and since code injection is
-            // prevented), that does not invalidate their views.
-            //
-            // Thus, moving, permitted coercing, or performing no-ops on `data` (in any quantity
-            // and order) does not invalidate the value returned by `data.view_mut()`, and since we
-            // also enforce the `'data` upper bound, this implementation is sound.
-            unsafe impl<
+            impl<
                 'a, 'data,
+                $($($impl_params)*)?
                 $(
                     $t,
                     $v: $crate::StableViewMut<
@@ -486,7 +478,6 @@ macro_rules! recursive_view {
                         )?
                     >,
                 )*
-                $($($impl_params)*)?
             > $crate::StableViewMut<
                 'a, 'data,
                 $($name)::+<$($($generics)*,)* $($t),*>,
@@ -524,6 +515,7 @@ macro_rules! recursive_view {
                     let $this_mut = data;
                     $(
                         // SAFETY: `'stable = 'a` is guaranteed to be sound.
+                        // See also the `view` implementation above.
                         let $map = |view_component: &'a mut _| unsafe {
                             <$v as $crate::StableViewMut<'a, 'data, $t>>::view_mut::<'a>(
                                 view_component,
@@ -544,9 +536,26 @@ macro_rules! recursive_view {
                         clippy::useless_transmute,
                         reason = "if `'stable` is unused, this is a no-op",
                     )]
-                    // SAFETY: See the "`transmute` in `view_mut` Implementation" section of the
-                    // `StableViewMut` docs. See also the above `view` implementation for why we do
-                    // a `transmute` here and set `'stable = 'a` in the above call.
+                    // SAFETY: See "`transmute` in `view(_mut)` Implementation" in the
+                    // `StableView::view` docs.
+                    // Moves, coercions, and no-ops cannot invalidate any `'static` data, so we need
+                    // only care about the potentially non-`'static` data in `data.view_mut()`,
+                    // which comes solely from view components produced from calling `.view_mut()`
+                    // on view components of `data`.
+                    // (This fact is a mixture of reasoning about the below impl and about the
+                    // safety requirements of this macro.)
+                    // Moves (or permitted coercions, or no-ops) of `data` (in any quantity and
+                    // order) can move (or permittedly coerce, or perform no-ops on) its view
+                    // components, but since the view kinds are here required to implement
+                    // `StableViewMut` for those view components (and since code injection is
+                    // prevented), that does not invalidate the `'stable` data of their views.
+                    // (Note that we use the fact that performing immutable operations on `data`
+                    // cannot perform mutable operations on its view components; this is why we
+                    // forbade internal mutability.)
+                    //
+                    // Thus, moves, permitted coercions, and no-ops (in any quantity and order) on
+                    // `data` do not invalidate the value returned by `data.view_mut()`, and since
+                    // we also enforce the `'data` upper bound, this implementation is sound.
                     unsafe {
                         ::core::mem::transmute::<
                             $crate::CustomViewMut<
@@ -568,12 +577,6 @@ macro_rules! recursive_view {
                 ///
                 /// [`stable_view::recursive_view`]: https://docs.rs/stable-view/0/stable_view/macro.recursive_view.html
                 #[allow(single_use_lifetimes, reason = "it's used once iff `*` repeats zero times")]
-                #[expect(
-                    unused_lifetimes,
-                    reason = "if a bound is unsatisfiable, the for<'maybe_unsat> lifetime binder \
-                            means that the trait will simply never be implemented, instead of the \
-                            impossible bound potentially causing a compilation error",
-                )]
                 // SAFETY:
                 // Let `Data` refer to `$($name)::+<$($($generics)*,)* $($t),*>`, a.k.a.
                 // `SelfWithoutParams<.., T1, .., Tn>`.
@@ -583,65 +586,63 @@ macro_rules! recursive_view {
                 // components' set of conceptual pools is equal to the set of conceptual pools of
                 // `data`'s view components.
                 //
-                // ...That definition is long. Put more simply: we're basically taking the
-                // intersection of `data`'s view components' conceptual pools. Two `Data` values are
-                // in the same conceptual pool if their view components are in the same conceptual
-                // pools (in any order, with any multiplicity). This definition ensures that `data`
-                // is in one (and exactly one) conceptual pool at any given time. A view's
-                // associated pool is the (fixed) conceptual pool which its source `Data` value was
-                // in at the time of its creation.
-                //
                 // Requirement 1:
+                // We're basically taking the intersection of `data`'s view components' conceptual
+                // pools. Two `Data` values are in the same conceptual pool if their view components
+                // are in the same conceptual pools (in any order, with any multiplicity). This
+                // definition ensures that `data` is in one (and exactly one) conceptual pool at any
+                // given time.
+                //
+                // Requirement 2:
                 // The caller of this macro guarantees that cloning `data` results in a new `Data`
                 // value whose view components are clones of `data`'s view components and which
                 // contain a clone of each of `data`'s view components. Therefore, the set of
                 // conceptual `StableClone` pools of the view components of `data` is the same as
                 // the set of conceptual pools of the view components of the clone of `data`. By
-                // definition, the clone is in the same pool as `data`, satisfying requirement 1.
+                // definition, the clone is in the same pool as `data`, satisfying requirement 2.
                 //
-                // Requirement 2:
+                // Requirement 3:
                 // Only the view components of `data` determine which pool it's in, so we need only
-                // care about the impact of moves, non-`DerefMut` coercions, and immutable
-                // operations on `data`'s view components. Moves (or permitted coercions, or
-                // immutable operations on) `data` (in any quantity and order) can move (or coerce,
-                // or perform immutable operations on) its view components, and since the view
+                // care about the impact of moves, permitted coercions, and immutable operations on
+                // `data`'s view components. Moves (or permitted coercions, or immutable operations
+                // on) `data` (in any quantity and order) can move (or permittedly coerce, or
+                // perform immutable operations on) its view components, and since the view
                 // components are here required to implement `StableClone`(and since code injection
                 // is prevented), that does not change which pools they are in.
                 // (Note that we use the fact that performing immutable operations on `data` cannot
-                // perform mutable operations on its view components; this is why we forbade internal
-                // mutability.)
+                // perform mutable operations on its view components; this is why we forbade
+                // internal mutability.)
                 //
                 // Thus, moves, permitted coercions, and immutable operations (in any quantity and
                 // order) on `data` do not change which pool `data` is in.
                 //
-                // Requirement 3:
+                // Requirement 4:
                 // If, for any view kind `V`, the conceptual pool associated with a view returned
                 // by `V::view(&data)` is nonempty, then there exists some value of type `Data` (or
                 // formerly of type `Data` before coercions) whose view components are in the same
                 // pools as the view components which were in `data` at the time the view was made.
                 // Therefore, each of those pools are nonempty.
                 //
-                // Since we require each view component to implement `StableClone`, the individual
-                // pools being nonempty implies that `'stable` data derived from each view component
-                // has not yet been invalidated (while `'data` has not yet ended).
+                // Since we require each view component to implement `StableClone<'data>`, the
+                // individual pools being nonempty implies that stable data derived from each
+                // view component has not yet been invalidated (while `'data` has not yet ended).
                 //
                 // In this branch where `StableClone = true` was set in the macro's inputs, the
-                // caller asserted that `'stable` data in ***any*** `StableView` view of this type
-                // must either be data valid for at least `'data` or come from a view component.
+                // caller asserted that stable data in ***any*** `StableView` view of this type
+                // must come from a view component.
                 //
                 // Therefore, while `'data` has not ended and the conceptual pool associated with
-                // a view returned by  `V::view(&data)` is nonempty, neither the `'data` data nor
-                // view components' `'stable` data could be invalidated, in which case none of the
-                // `'stable` data in that view could be invalidated.
+                // a view returned by  `V::view(&data)` is nonempty, none of the stable data in that
+                // view could be invalidated.
                 unsafe impl<
                     'data,
+                    $($($impl_params)*)?
                     $(
                         $t: $crate::StableClone<'data>,
                     )*
-                    $($($impl_params)*)?
                 > $crate::StableClone<'data> for $($name)::+<$($($generics)*,)* $($t),*>
                 where
-                    for<'maybe_unsat> $($name)::+<$($($generics)*,)* $($t),*>: ::core::clone::Clone,
+                    $($name)::+<$($($generics)*,)* $($t),*>: ::core::clone::Clone,
                     // We define `'data` before expanding untrusted `tt` tokens, so by macro hygiene,
                     // this mention of `'data` prevents any of them from switching out this unsafe
                     // impl. There is still `where_bounds` below, but those bounds can't do any damage
@@ -656,11 +657,11 @@ macro_rules! recursive_view {
                 #[allow(single_use_lifetimes, reason = "it's used once iff `*` repeats zero times")]
                 impl<
                     'a, 'data: 'a,
+                    $($($impl_params)*)?
                     $(
                         $t,
                     )*
-                    $($($impl_params)*)?
-                > $crate::SetDefaultView<'a, 'data>
+                > $crate::DefaultStableView<'a, 'data>
                 for $($name)::+<$($($generics)*,)* $($t),*>
                 where
                     $(
@@ -675,6 +676,37 @@ macro_rules! recursive_view {
                     $($($where_bounds)*)?
                 {
                     type Default = $crate::RecursiveViewKind<($(
+                        $crate::__replace!({$v}, {$crate::DefaultViewKind}),
+                    )*)>;
+                }
+
+                #[allow(single_use_lifetimes, reason = "it's used once iff `*` repeats zero times")]
+                impl<
+                    'a, 'data: 'a,
+                    $($($impl_params)*)?
+                    $(
+                        $t,
+                    )*
+                > $crate::DefaultStableViewMut<'a, 'data>
+                for $($name)::+<$($($generics)*,)* $($t),*>
+                where
+                    $(
+                        $crate::DefaultViewKind: $crate::StableViewMut<
+                            'a, 'data, $t,
+                            $(View:
+                                $crate::__macro::variance_family::CovariantFamily<'a, &'data (), Is: $($view_bounds)*>
+                                // Alas, we need this trailing comma :|
+                                + $($view_bounds)*,
+                            )?
+                            $(ViewMut:
+                                $crate::__macro::variance_family::CovariantFamily<'a, &'data (), Is: $($view_mut_bounds)*>
+                                + $($view_mut_bounds)*
+                            )?
+                        >,
+                    )*
+                    $($($where_bounds)*)?
+                {
+                    type DefaultMut = $crate::RecursiveViewKind<($(
                         $crate::__replace!({$v}, {$crate::DefaultViewKind}),
                     )*)>;
                 }

@@ -15,7 +15,7 @@ use variance_family::{Unvarying, VaryingRef, VaryingRefMut};
 
 use crate::{
     traits::{StableView, StableViewMut},
-    view_kinds::{PointerViewKind, SetDefaultView, SetDefaultViewMut},
+    view_kinds::{DefaultStableView, DefaultStableViewMut, ReferenceViewKind},
 };
 
 
@@ -30,16 +30,17 @@ use crate::{
 /// In particular, a pointer or reference guaranteed to not be invalidated may continue to be used
 /// (which requires `unsafe`ly dereferencing a raw pointer or lifetime-extending a reference).
 ///
+/// Define "permitted coercions" to be any [coercions] available in or before stable Rust 1.85,
+/// except `Deref` and `DerefMut` coercions. The "in or before stable Rust 1.85" qualifier guards
+/// against any future coercions which could be problematic.
+///
 /// ### `&T`
 /// Any `&T` directly obtained from a value of `Self` via methods provided by this crate (see
 /// below), as well as all pointers or references derived from such a `&T`, will not be invalidated
-/// by moving that value of `Self`, by dropping it, by performing non-`DerefMut` coercions among
-/// coercions available in or before Rust 1.85 (e.g., where `'long: 'short`, an
-/// `AliasableRefMut<'long, T>` may be coerced to `AliasableRefMut<'short, T>` no differently than
-/// a move), or by performing any operation on a shared reference (`&Self`) to that value.
-///
-/// The "in or before Rust 1.85" qualifier guards against any future coercions, which could, like
-/// `DerefMut`, be problematic.
+/// by moving that value of `Self`, by dropping it, by performing permitted coercions (e.g., where
+/// `'long: 'short`, an `AliasableRefMut<'long, T>` may be coerced to `AliasableRefMut<'short, T>`
+/// no differently than a move), or by performing any operation on a shared reference (`&Self`) to
+/// that value (including `Deref` coercions).
 ///
 /// In particular, calling any methods of `AliasableRefMut` on that value of `Self` which take the
 /// value as an owned `Self` argument or an exclusively borrowed `&mut Self` argument may
@@ -55,13 +56,8 @@ use crate::{
 /// ### `&mut T`
 /// Any `&mut T` directly obtained from a value of `Self` via methods provided by this crate (see
 /// below), as well as all pointers or references derived from such a `&mut T`, will not be
-/// invalidated by moving that value of `Self`, by dropping it, by performing non-deref coercions
-/// available in or before Rust 1.85 (e.g., where `'long: 'short`, an `AliasableRefMut<'long, T>`
-/// may be coerced to `AliasableRefMut<'short, T>` no differently than a move), or by performing
-/// no-ops on it.
-///
-/// The "in or before Rust 1.85" qualifier guards against any future coercions, which could, like
-/// `Deref` and `DerefMut`, be problematic.
+/// invalidated by moving that value of `Self`, by dropping it, by performing permitted coercions,
+/// or by performing no-ops on it.
 ///
 /// In particular, calling any methods of `AliasableRefMut` on that value of `Self` (whether owned
 /// or referenced) may invalidate such pointers and references (or allow safe code to later
@@ -92,6 +88,8 @@ use crate::{
 /// If a more suitable type ever becomes available (such as a pointer type with alignment, non-null,
 /// dereferenceability, and pointee validity requirements but the weak aliasing requirements of
 /// raw pointers), a breaking change might be made to change the layout.
+///
+/// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html#r-coerce.types
 #[repr(transparent)]
 pub struct AliasableRefMut<'a, T: ?Sized> {
     /// # Safety invariant
@@ -156,7 +154,7 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     /// guarantee.
     ///
     /// ### Stable view traits
-    /// - [`StableView`] only prohibits the application of moves, non-`DerefMut` coercions, and
+    /// - [`StableView`] only prohibits the application of moves, permitted coercions, and
     ///   immutable operations in any quantity and order to a `Self` value from invalidating
     ///   pointers or references derived from a call to [`StableView::view`] on that `Self` value
     ///   (which converts `self.ptr` into a `&T`), and permits the view to be invalidated once
@@ -166,7 +164,7 @@ pub struct AliasableRefMut<'a, T: ?Sized> {
     ///   those which convert `self.ptr` to a `&mut T`, and functions which take `&Self` arguments
     ///   are not permitted to do that. Once lifetime `'a` expires, references to the pointee
     ///   of `self.ptr` might be invalidated through other means, which is fine.
-    /// - [`StableViewMut`] only prohibits moves, non-deref coercions, and no-ops (in any quantity
+    /// - [`StableViewMut`] only prohibits moves, permitted coercions, and no-ops (in any quantity
     ///   and order) on a `Self` value from invalidating pointers or references derived from a call
     ///   to [`StableViewMut::view_mut`] on that `Self` value, and permits the view to be
     ///   invalidated once lifetime parameters of the implementing type expire.
@@ -302,7 +300,7 @@ impl<'a, T: ?Sized> AliasableRefMut<'a, T> {
         // SAFETY:
         // - The `Deref` and `DerefMut` implementations of `AliasableRefMut` do not move out of the
         //   pointee, and it does not implement `Drop`. Therefore, those trait implementations
-        //   are well-behaved.
+        //   are well-behaved. (So are the `Debug`, `Display`, `PartialEq`, and `PartialOrd` impls.)
         // - Since the source `&'a mut T` reference is pinned, we know that the produced pinned
         //   value (if `!Unpin`) remains pinned until it is dropped (even though, ordinarily,
         //   we would not be able to guarantee what happens after lifetime `'a`).
@@ -325,7 +323,7 @@ impl<'a, T: ?Sized> AliasableRefMut<'a, T> {
         // SAFETY:
         // - The `Deref` and `DerefMut` implementations of `&'a mut T` do not move out of the
         //   pointee, and it does not implement `Drop`. Therefore, those trait implementations
-        //   are well-behaved.
+        //   are well-behaved. (So are the `Debug`, `Display`, `PartialEq`, and `PartialOrd` impls.)
         // - Since the source `Aliasable<'a, T>` reference is pinned, we know that the produced
         //   pinned value (if `!Unpin`) remains pinned until it is dropped (even though, ordinarily,
         //   we would not be able to guarantee what happens after lifetime `'a`).
@@ -388,13 +386,7 @@ impl<'a, T: ?Sized> From<Pin<&'a mut T>> for Pin<AliasableRefMut<'a, T>> {
     }
 }
 
-// SAFETY: By the aliasing guarantee of `AliasableRefMut` for `&T` references obtained from
-// `Deref::deref` (among other methods), performing moves, non-`DerefMut` coercions, or immutable
-// operations in any quantity and order on the source `Self` value will not invalidate the returned
-// `&T` view.
-// (In fact, `AliasableRefMut` guarantees that dropping it will not invalidate views, either,
-// which is stronger than the requirement imposed by `AliasableView`.)
-unsafe impl<'a, 'b, 'data, T> StableView<'a, 'data, AliasableRefMut<'b, T>> for PointerViewKind
+impl<'a, 'b, 'data, T> StableView<'a, 'data, AliasableRefMut<'b, T>> for ReferenceViewKind
 where
     T: ?Sized + 'b,
     'b: 'data,
@@ -409,7 +401,13 @@ where
     {
         let stable_eq_a: &'a T = data;
 
-        // SAFETY: See the "`transmute` in `view` Implementation" section of the `StableView` docs.
+        // SAFETY: See "`transmute` in `view(_mut)` Implementation" in the `StableView::view` docs.
+        // By the aliasing guarantee of `AliasableRefMut` for `&T` references obtained from
+        // `Deref::deref` (among other methods), we know that performing moves, permitted coercions,
+        // or immutable operations in any quantity and order on the source `Self` value will not
+        // invalidate the returned `&T` view.
+        // (In fact, `AliasableRefMut` guarantees that dropping it will not invalidate views,
+        // either, which is stronger than the requirement imposed by `AliasableView`.)
         unsafe {
             transmute::<
                 &'a T,
@@ -419,20 +417,15 @@ where
     }
 }
 
-impl<'b, 'data, T> SetDefaultView<'_, 'data> for AliasableRefMut<'b, T>
+impl<'b, 'data, T> DefaultStableView<'_, 'data> for AliasableRefMut<'b, T>
 where
     T: ?Sized + 'b,
     'b: 'data,
 {
-    type Default = PointerViewKind;
+    type Default = ReferenceViewKind;
 }
 
-// SAFETY: By the aliasing guarantee of `AliasableRefMut` for `&mut T` references obtained from
-// `DerefMut::deref_mut` (among other methods), performing moves or non-deref coercions (in any
-// quantity and order) on the source `Self` value will not invalidate the returned `&mut T` view.
-// (In fact, `AliasableRefMut` guarantees that dropping it will not invalidate views, either, which
-// is stronger than the requirement imposed by `AliasableViewMut`.)
-unsafe impl<'a, 'b, 'data, T> StableViewMut<'a, 'data, AliasableRefMut<'b, T>> for PointerViewKind
+impl<'a, 'b, 'data, T> StableViewMut<'a, 'data, AliasableRefMut<'b, T>> for ReferenceViewKind
 where
     T: ?Sized + 'b,
     'b: 'data,
@@ -447,8 +440,13 @@ where
     {
         let stable_eq_a: &'a mut T = data;
 
-        // SAFETY: See the "`transmute` in `view_mut` Implementation" section of the
-        // `StableViewMut` docs.
+        // SAFETY: See "`transmute` in `view(_mut)` Implementation" in the `StableView::view` docs.
+        // By the aliasing guarantee of `AliasableRefMut` for `&mut T` references obtained from
+        // `DerefMut::deref_mut` (among other methods), performing moves or non-deref coercions (in
+        // any quantity and order) on the source `Self` value will not invalidate the returned
+        // `&mut T` view. (In fact, `AliasableRefMut` guarantees that dropping it will not
+        // invalidate views, either, which is stronger than the requirement imposed by
+        // `AliasableViewMut`.)
         unsafe {
             transmute::<
                 &'a mut T,
@@ -458,12 +456,12 @@ where
     }
 }
 
-impl<'b, 'data, T> SetDefaultViewMut<'_, 'data> for AliasableRefMut<'b, T>
+impl<'b, 'data, T> DefaultStableViewMut<'_, 'data> for AliasableRefMut<'b, T>
 where
     T: ?Sized + 'b,
     'b: 'data,
 {
-    type DefaultMut = PointerViewKind;
+    type DefaultMut = ReferenceViewKind;
 }
 
 // SAFETY: Since `AliasableRefMut<'_, T>` acts like `&mut T`,

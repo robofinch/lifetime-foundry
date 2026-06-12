@@ -17,7 +17,7 @@ use variance_family::{Unvarying, VaryingRef, VaryingRefMut};
 
 use crate::{
     traits::{StableView, StableViewMut},
-    view_kinds::{PointerViewKind, SetDefaultView, SetDefaultViewMut},
+    view_kinds::{DefaultStableView, DefaultStableViewMut, ReferenceViewKind},
 };
 
 
@@ -32,16 +32,17 @@ use crate::{
 /// In particular, a pointer or reference guaranteed to not be invalidated may continue to be used
 /// (which requires `unsafe`ly dereferencing a raw pointer or lifetime-extending a reference).
 ///
+/// Define "permitted coercions" to be any [coercions] available in or before stable Rust 1.85,
+/// except `Deref` and `DerefMut` coercions. The "in or before stable Rust 1.85" qualifier guards
+/// against any future coercions which could be problematic.
+///
 /// ### `&T`
 /// Any `&T` directly obtained from a value of `Self` via methods provided by this crate (see
 /// below), as well as all pointers or references derived from such a `&T`, will not be invalidated
-/// by moving that value of `Self`, by performing non-`DerefMut` coercions among coercions
-/// available in or before Rust 1.85 (e.g., where `'long: 'short`, an `AliasableBox<[&'long T; N]>`
-/// may be coerced to `AliasableBox<[&'short T]>` no differently than a move), or by performing any
-/// operation on a shared reference (`&Self`) to that value.
-///
-/// The "in or before Rust 1.85" qualifier guards against any future coercions, which could, like
-/// `DerefMut`, be problematic.
+/// by moving that value of `Self`, by performing permitted coercions (e.g., where `'long: 'short`,
+/// an `AliasableBox<[&'long T; N]>` may be coerced to `AliasableBox<[&'short T]>` no differently
+/// than a move), or by performing any operation on a shared reference (`&Self`) to that value
+/// (including `Deref` coercions).
 ///
 /// In particular, calling any methods of `AliasableBox` on that value of `Self` which take the
 /// value as an owned `Self` argument or an exclusively borrowed `&mut Self` argument may
@@ -56,12 +57,8 @@ use crate::{
 /// ### `&mut T`
 /// Any `&mut T` directly obtained from a value of `Self` via methods provided by this crate (see
 /// below), as well as all pointers or references derived from such a `&mut T`, will not be
-/// invalidated by moving that value of `Self`, by performing non-deref coercions available in or
-/// before Rust 1.85 (e.g., where `'long: 'short`, an `AliasableBox<[&'long T; N]>` may be coerced
-/// to `AliasableBox<[&'short T]>` no differently than a move), or by performing no-ops on it.
-///
-/// The "in or before Rust 1.85" qualifier guards against any future coercions, which could, like
-/// `Deref` and `DerefMut`, be problematic.
+/// invalidated by moving that value of `Self`, by performing permitted coercions, or by performing
+/// no-ops on it.
 ///
 /// In particular, calling any methods of `AliasableBox` on that value of `Self` (whether owned
 /// or referenced) may invalidate such pointers and references (or allow safe code to later
@@ -97,6 +94,8 @@ use crate::{
 /// If a more suitable type ever becomes available (such as a pointer type with alignment, non-null,
 /// dereferenceability, and pointee validity requirements but the weak aliasing requirements of
 /// raw pointers), a breaking change might be made to change the layout.
+///
+/// [coercions]: https://doc.rust-lang.org/reference/type-coercions.html#r-coerce.types
 #[repr(transparent)]
 pub struct AliasableBox<T: ?Sized> {
     /// # Safety invariant
@@ -145,7 +144,7 @@ pub struct AliasableBox<T: ?Sized> {
     /// A `&T` obtained directly from `Self` through the intended means, and any pointers or
     /// references derived from that `&T`, derives from `self.ptr` (or a moved-to or moved-from
     /// version of `self.ptr`, if any retagging occurs when a raw pointer is moved). Moves of
-    /// `Self` (and non-`DerefMut` coercions) do not retag such pointers and references in a
+    /// `Self` (and permitted coercions) do not retag such pointers and references in a
     /// problematic way. No operation writes through `self.ptr` (or a pointer derived from it) when
     /// accessed through a `&Self` value; third-party `unsafe` code is explicitly warned against
     /// doing so in this type's documentation, and for the code here, functions taking
@@ -157,13 +156,13 @@ pub struct AliasableBox<T: ?Sized> {
     /// A `&mut T` obtained directly from `Self` through the intended means, and any pointers or
     /// references derived from that `&mut T`, derives from `self.ptr` (or a moved-to or moved-from
     /// version of `self.ptr`, if any retagging occurs when a raw pointer is moved). Moves of
-    /// `Self` (and non-deref coercions) do not retag such pointers and references in a problematic
+    /// `Self` (and permitted coercions) do not retag such pointers and references in a problematic
     /// way. All other operations are allowed to invalidate such references, so methods of
     /// `AliasableBox` taking `Self`, `&Self`, or `&mut Self` arguments can read or write through
     /// `self.ptr` (or references derived from it) without violating the aliasing guarantee.
     ///
     /// ### Stable view traits
-    /// - [`StableView`] only prohibits the application of moves, non-`DerefMut` coercions, and
+    /// - [`StableView`] only prohibits the application of moves, permitted coercions, and
     ///   immutable operations in any quantity and order to a `Self` value from invalidating
     ///   pointers or references derived from a call to [`StableView::view`] on that `Self` value
     ///   (which converts `self.ptr` into a `&T`).
@@ -171,7 +170,7 @@ pub struct AliasableBox<T: ?Sized> {
     ///   The only methods of `AliasableBox` which invalidate such pointers and references are
     ///   those which convert `self.ptr` to a `&mut T`, and functions which take `&Self` arguments
     ///   are not permitted to do that.
-    /// - [`StableViewMut`] only prohibits moves, non-deref coercions, and no-ops (in any quantity
+    /// - [`StableViewMut`] only prohibits moves, permitted coercions, and no-ops (in any quantity
     ///   and order) on a `Self` value from invalidating pointers or references derived from a call
     ///   to [`StableViewMut::view_mut`] on that `Self` value.
     ///
@@ -368,6 +367,7 @@ impl<T: ?Sized> AliasableBox<T> {
         //   `T` (and since `Box<T>` supports `Box::pin`, we know that it will not allow the
         //   `T` allocation to be invalidated or repurposed until `T::drop` returns or panics).
         //   Therefore, those trait implementations are well-behaved.
+        //   (So are the `Debug`, `Display`, `PartialEq`, and `PartialOrd` impls.)
         // - We do not have other problematic pin projections or something. We are not a
         //   `#[fundamental]` type with myriad soundness concerns around pinning. The pointee is
         //   properly pinned.
@@ -447,11 +447,7 @@ impl<T: ?Sized> From<Pin<Box<T>>> for Pin<AliasableBox<T>> {
     }
 }
 
-// SAFETY: By the aliasing guarantee of `AliasableBox` for `&T` references obtained from
-// `Deref::deref` (among other methods), performing moves, non-`DerefMut` coercions, or immutable
-// operations in any quantity and order on the source `Self` value will not invalidate the returned
-// `&T` view.
-unsafe impl<'a, 'data, T> StableView<'a, 'data, AliasableBox<T>> for PointerViewKind
+impl<'a, 'data, T> StableView<'a, 'data, AliasableBox<T>> for ReferenceViewKind
 where
     T: ?Sized + 'data,
 {
@@ -465,7 +461,11 @@ where
     {
         let stable_eq_a: &'a T = data;
 
-        // SAFETY: See the "`transmute` in `view` Implementation" section of the `StableView` docs.
+        // SAFETY: See "`transmute` in `view(_mut)` Implementation" in the `StableView::view` docs.
+        // By the aliasing guarantee of `AliasableBox` for `&T` references obtained from
+        // `Deref::deref` (among other methods), performing moves, permitted coercions, or immutable
+        // operations in any quantity and order on the source `Self` value will not invalidate the
+        // returned `&T` view.
         unsafe {
             transmute::<
                 &'a T,
@@ -475,14 +475,11 @@ where
     }
 }
 
-impl<'data, T: ?Sized + 'data> SetDefaultView<'_, 'data> for AliasableBox<T> {
-    type Default = PointerViewKind;
+impl<'data, T: ?Sized + 'data> DefaultStableView<'_, 'data> for AliasableBox<T> {
+    type Default = ReferenceViewKind;
 }
 
-// SAFETY: By the aliasing guarantee of `AliasableBox` for `&mut T` references obtained from
-// `DerefMut::deref_mut` (among other methods), performing moves or non-deref coercions (in any
-// quantity and order) on the source `Self` value will not invalidate the returned `&mut T` view.
-unsafe impl<'a, 'data, T> StableViewMut<'a, 'data, AliasableBox<T>> for PointerViewKind
+impl<'a, 'data, T> StableViewMut<'a, 'data, AliasableBox<T>> for ReferenceViewKind
 where
     T: ?Sized + 'data,
 {
@@ -496,8 +493,11 @@ where
     {
         let stable_eq_a: &'a mut T = data;
 
-        // SAFETY: See the "`transmute` in `view_mut` Implementation" section of the
-        // `StableViewMut` docs.
+        // SAFETY: See "`transmute` in `view(_mut)` Implementation" in the `StableView::view` docs.
+        // SAFETY: By the aliasing guarantee of `AliasableBox` for `&mut T` references obtained from
+        // `DerefMut::deref_mut` (among other methods), performing moves or permitted coercions (in
+        // any quantity and order) on the source `Self` value will not invalidate the returned
+        // `&mut T` view.
         unsafe {
             transmute::<
                 &'a mut T,
@@ -507,8 +507,8 @@ where
     }
 }
 
-impl<'data, T: ?Sized + 'data> SetDefaultViewMut<'_, 'data> for AliasableBox<T> {
-    type DefaultMut = PointerViewKind;
+impl<'data, T: ?Sized + 'data> DefaultStableViewMut<'_, 'data> for AliasableBox<T> {
+    type DefaultMut = ReferenceViewKind;
 }
 
 // SAFETY: Since `AliasableBox<T>` acts like `Box<T>`,
