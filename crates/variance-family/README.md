@@ -220,3 +220,4 @@ any additional terms or conditions.
 [`change_bounds_into`]: https://docs.rs/variance-family/0/variance_family/fn.change_bounds_into.html
 [`MaxUpperBound`]: https://docs.rs/variance-family/0/variance_family/type.MaxUpperBound.html
 [variance]: https://doc.rust-lang.org/nomicon/subtyping.html#variance
+[`attached-ref`]: https://docs.rs/attached-ref/0/attached_ref
