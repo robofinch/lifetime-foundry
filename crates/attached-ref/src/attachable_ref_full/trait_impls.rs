@@ -1,11 +1,10 @@
-#![expect(unsafe_code, reason = "perform unsafe lifetime erasure and extension of self-refs")]
+//! Temporary organization module.
 
 use core::{cmp::Ordering, convert::Infallible};
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use stable_view::StableClone;
 use variance_family::LendFamily;
-
 
 use crate::slot::SelfRefCases;
 use super::full_struct::{AttachableRefFull, SpeedBump};
@@ -69,8 +68,6 @@ where
     }
 }
 
-
-
 impl<'data, 'upper, N, R, Data> Clone for AttachableRefFull<'data, 'upper, N, R, Infallible, Data>
 where
     'upper: 'data,
@@ -90,7 +87,7 @@ where
         // for this whole function body implies that any self-references in `maybe_ref` are
         // not invalidated (before they are dropped).
         let data = SpeedBump {
-            speed_bump_inner: data.clone(),
+            speed_bump: data.clone(),
         };
 
         unsafe { Self::from_slot(data, slot) }

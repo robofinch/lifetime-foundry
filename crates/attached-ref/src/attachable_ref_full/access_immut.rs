@@ -1,4 +1,4 @@
-#![expect(unsafe_code, reason = "perform unsafe lifetime erasure and extension of self-refs")]
+//! Temporary organization module.
 
 use variance_family::{Lend, LendFamily};
 
@@ -53,10 +53,10 @@ where
     > {
         match self.get() {
             SelfRefCases::NoRef(no_ref)        => {
-                SelfRefCases::NoRef((no_ref, &self.data.speed_bump_inner))
+                SelfRefCases::NoRef((no_ref, &self.data.speed_bump))
             }
             SelfRefCases::Ref(self_ref)        => {
-                SelfRefCases::Ref((self_ref, &self.data.speed_bump_inner))
+                SelfRefCases::Ref((self_ref, &self.data.speed_bump))
             }
             SelfRefCases::RefMut(self_ref_mut) => SelfRefCases::RefMut(self_ref_mut),
         }
@@ -74,7 +74,7 @@ where
     #[must_use]
     pub const fn try_get_data(&self) -> Option<&Data> {
         match self.get() {
-            SelfRefCases::NoRef(_) | SelfRefCases::Ref(_) => Some(&self.data.speed_bump_inner),
+            SelfRefCases::NoRef(_) | SelfRefCases::Ref(_) => Some(&self.data.speed_bump),
             SelfRefCases::RefMut(_) => None,
         }
     }

@@ -28,3 +28,5 @@ either          = { workspace = true, default-features = false, optional = true 
 [features]
 default = ["alloc"]
 alloc   = ["stable-view/alloc"]
+
+either = ["dep:either", "stable-view/either"]

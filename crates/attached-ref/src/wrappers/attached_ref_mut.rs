@@ -1,3 +1,5 @@
+//! The [`AttachedRefMut`] wrapper.
+
 use core::convert::Infallible;
 
 use variance_family::LendFamily;
@@ -12,5 +14,8 @@ where
     M:    LendFamily<&'data ()>,
     Data: ?Sized,
 {
+    /// `AttachedRefMut` is solely a more ergonomic interface for this inner field; it does not
+    /// add any invariants on top of
+    /// `AttachableRefFull<'data, 'data, Infallible, Infallible, M, Data>`.
     full: AttachableRefFull<'data, 'data, Infallible, Infallible, M, Data>,
 }

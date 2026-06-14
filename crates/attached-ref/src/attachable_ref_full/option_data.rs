@@ -1,6 +1,4 @@
-#![expect(unsafe_code, reason = "perform unsafe lifetime erasure and extension of self-refs")]
-
-use core::hint::assert_unchecked;
+//! Temporary organization module.
 
 use variance_family::{Lend, LendFamily};
 
@@ -17,11 +15,12 @@ where
     /// Construct a new [`AttachableRefFull`] in the [`Ref`] state without actually having
     /// self-references.
     ///
-    /// TODO: This can be paired with `wrap_data_in_option` to mix owned and borrowed data.
+    /// This can be paired with [`wrap_data_in_some`] to mix owned and self-referential data.
     ///
-    /// See also [`AttachableRefFull::new_always_owned_ref`] if the possibility of borrowed data is
-    /// not needed.
+    /// See also [`new_always_owned_ref`] if the possibility of self-referential data is not needed.
     ///
+    /// [`wrap_data_in_some`]: AttachableRefFull::wrap_data_in_some
+    /// [`new_always_owned_ref`]: AttachableRefFull::new_always_owned_ref
     /// [`Ref`]: SelfRefCases::Ref
     #[inline]
     #[must_use]
@@ -32,11 +31,12 @@ where
     /// Construct a new [`AttachableRefFull`] in the [`RefMut`] state without actually having
     /// self-references.
     ///
-    /// TODO: This can be paired with `wrap_data_in_option` to mix owned and borrowed data.
+    /// This can be paired with [`wrap_data_in_some`] to mix owned and self-referential data.
     ///
-    /// See also [`AttachableRefFull::new_always_owned_mut`] if the possibility of borrowed data is
-    /// not needed.
+    /// See also [`new_always_owned_mut`] if the possibility of self-referential data is not needed.
     ///
+    /// [`wrap_data_in_some`]: AttachableRefFull::wrap_data_in_some
+    /// [`new_always_owned_mut`]: AttachableRefFull::new_always_owned_mut
     /// [`RefMut`]: SelfRefCases::RefMut
     #[inline]
     #[must_use]
@@ -51,12 +51,8 @@ where
     /// If `Data` is `Some`, `self` is returned back.
     #[inline]
     pub fn try_into_owned_slot(self) -> Result<SelfRefSlot<'data, 'upper, N, R, M>, Self> {
-        if self.data.speed_bump_inner.is_none() {
-            let (slot, none) = unsafe { self.into_raw_pieces() };
-
-            unsafe {
-                assert_unchecked(none.is_none());
-            };
+        if self.data.speed_bump.is_none() {
+            let (_none, slot) = unsafe { self.into_raw_pieces() };
 
             Ok(slot)
         } else {
@@ -64,6 +60,12 @@ where
         }
     }
 
+    /// If `Data` is [`None`], then the backing data is set to the provided `data: NewData` value.
+    ///
+    /// Since stable self-references to `None` are not possible, the old data is soundly discarded.
+    ///
+    /// # Errors
+    /// If `Data` is `Some`, `self` and the given `data: NewData` are returned back.
     #[inline]
     pub fn try_set_data<NewData>(
         self,

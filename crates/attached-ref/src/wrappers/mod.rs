@@ -1,6 +1,6 @@
-//! Safe wrappers around [`AttachableRefFull`].
+//! Transparent wrappers around [`AttachableRefFull`].
 //!
-//! [`AttachableRefFull`]: crate::full::AttachableRefFull
+//! [`AttachableRefFull`]: crate::attachable_ref_full::AttachableRefFull
 
 mod attachable_ref;
 mod attachable_ref_mut;

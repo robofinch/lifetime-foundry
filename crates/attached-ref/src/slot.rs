@@ -1,8 +1,25 @@
-#![expect(unsafe_code, reason = "perform unsafe lifetime erasure and extension")]
+//! The [`SelfRefCases`] enum, related sugar, and the internal [`ErasedSelfRefSlot`] type.
+#![expect(unsafe_code, reason = "perform unsafe lifetime erasure and extension; assert variance")]
 
 use core::mem::{ManuallyDrop, MaybeUninit, transmute};
 
-use variance_family::{Lend, LendFamily};
+use variance_family::generic_wrapper;
+use variance_family::{Lend, LendFamily, Unvarying};
+
+use crate::LendWrapper;
+
+
+#[expect(missing_docs, reason = "TODO")]
+pub type SelfRefSlot<'stable, 'upper, N, R, M> = Lend<
+    'stable, &'upper (),
+    SelfRefCases<Unvarying<N>, R, M>,
+>;
+
+#[expect(missing_docs, reason = "TODO")]
+pub type SelfRefSlotWrapper<'stable, 'upper, N, R, M> = LendWrapper<
+    'stable, 'upper,
+    SelfRefCases<Unvarying<N>, R, M>,
+>;
 
 
 #[expect(missing_docs, reason = "TODO")]
@@ -13,12 +30,19 @@ pub enum SelfRefCases<N, R, M> {
     RefMut(M),
 }
 
-#[expect(missing_docs, reason = "TODO")]
-pub type SelfRefSlot<'stable, 'upper, N, R, M> = SelfRefCases<
-    N,
-    Lend<'stable, &'upper (), R>,
-    Lend<'stable, &'upper (), M>,
->;
+generic_wrapper! {
+    impl<{
+        // SAFETY: `SelfRefCases<N, R, M>` is covariant over `R`.
+        #[unsafe(covariant)] N (Is: Sized),
+        // SAFETY: `SelfRefCases<N, R, M>` is covariant over `R`.
+        #[unsafe(covariant)] R (Is: Sized),
+        // SAFETY: `SelfRefCases<N, R, M>` is covariant over `R`.
+        #[unsafe(covariant)] M (Is: Sized),
+    }> ([Co] + [Contra])variantFamily<'_, _>
+    // SAFETY: `SelfRefCases` is defined in this crate.
+    for #[unsafe(not_a_foreign_fundamental_type)] SelfRefCases<..>
+}
+
 
 /// A version of [`SelfRefSlot<'stable, 'upper, N, R, M>`] with its `'stable` and `'upper`
 /// lifetimes unsafely erased to `'erased`.
@@ -89,6 +113,12 @@ where
     /// requirements from the `SelfRefSlot` value. This can be relevant in destructors of
     /// self-referential structs, where the incorrect `'s = 'erased` lifetime could otherwise
     /// cause unsoundness.
+    ///
+    /// # Drop Check
+    /// Since this type implements `Drop`, we shouldn't need to fear dropck allowing something
+    /// to dangle. Besides, *to begin with*, this type doesn't rely on dropck to ensure that its
+    /// referenced data doesn't dangle when it's dropped; this type tells its user to ensure that
+    /// (in the safety conditions of `Self::erase`).
     erased: MaybeUninit<SelfRefSlot<'erased, 'erased, N, R, M>>,
 }
 
@@ -295,10 +325,14 @@ where
         // of writes also depends on the above safety invariant being upheld).
         unsafe { unerased.assume_init_mut() }
     }
+}
 
-    /// # Safety
-    /// For now, this may only be called in the destructor.
-    unsafe fn unerase_drop<'a>(&'a mut self) {
+impl<'erased, N, R, M> Drop for ErasedSelfRefSlot<'erased, N, R, M>
+where
+    R: LendFamily<&'erased ()>,
+    M: LendFamily<&'erased ()>,
+{
+    fn drop<'a>(&'a mut self) {
         let erased = &mut self.erased;
 
         // SAFETY: Same as the `transmute` in `unerase_ref`.
@@ -323,21 +357,6 @@ where
         // something, all that matters is that *some* lifetime works; therefore, this call is sound.
         unsafe {
             unerased.assume_init_drop();
-        }
-    }
-
-    // TODO (as needed): `unerase_take`, `replace`, `erase_write`.
-}
-
-impl<'erased, N, R, M> Drop for ErasedSelfRefSlot<'erased, N, R, M>
-where
-    R: LendFamily<&'erased ()>,
-    M: LendFamily<&'erased ()>,
-{
-    fn drop(&mut self) {
-        // SAFETY: We are calling this in the destructor.
-        unsafe {
-            self.unerase_drop();
         }
     }
 }

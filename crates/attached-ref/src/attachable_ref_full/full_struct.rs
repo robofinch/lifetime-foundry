@@ -1,21 +1,19 @@
-#![expect(unsafe_code, reason = "perform unsafe lifetime erasure and extension of self-refs")]
+//! Temporary organization module.
 
-use core::marker::PhantomData;
+use core::{marker::PhantomData, mem::transmute};
 
 use variance_family::LendFamily;
 
+use crate::map_slot::MappedSlot;
 use crate::slot::{ErasedSelfRefSlot, SelfRefSlot};
 
 
 /// Out of *extra* paranoia, disable any accidental `Debug`ing, `Clone`ing, or other immutable
 /// access to `Data` (which would invalidate mutable self-references).
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "For now, `AttachableRefFull` is implemented across the `super` module",
-)]
 #[repr(transparent)]
-pub(super) struct SpeedBump<Data: ?Sized> {
-    pub(super) speed_bump_inner: Data,
+pub(crate) struct SpeedBump<Data: ?Sized> {
+    /// A `Data` value that needs to be handled carefully.
+    pub speed_bump: Data,
 }
 
 /// # Robust Guarantee
@@ -51,9 +49,6 @@ where
     R:      LendFamily<&'upper ()>,
     M:      LendFamily<&'upper ()>,
     Data:   ?Sized,
-    // Oh! I can change `upper` with a macro!
-    // And remove a bunch of `PhantomData` stuff to make the compiler happier! ....except in
-    // generic code. So maybe `PhantomData` has to stay????
 {
     /// # Safety of Use
     /// This is a lifetime-erased `SelfRefSlot<'stable, 'erased, N, R, M>`.
@@ -108,14 +103,36 @@ where
     R:      LendFamily<&'upper ()>,
     M:      LendFamily<&'upper ()>,
 {
+    /// Internal version of [`Self::from_slot_unchecked`], using [`SpeedBump`] for better
+    /// visibility of `Data` manipulations.
+    ///
     /// # Safety
-    /// Any `'stable` data in `slot` must consist only of:
-    /// - references to the given `data: Data` value, obtained via [`StableView::view`], and/or
-    /// - data that lives for at least `'data`.
+    /// See [`stable_view::concepts_and_safety`] for the "stable" jargon used below.
+    ///
+    /// The exact safety requirements of this function depend on the state of `slot`.
+    ///
+    /// If `slot` is in the [`NoRef`] state, then it ***must*** not contain stable (non-long-lived)
+    /// data.
+    ///
+    /// If `slot` is in the [`Ref`] state, then it any stable data it contains must not be
+    /// invalidated by performing the three kinds of operations permitted by [`StableView::view`]
+    /// on `data`. (Technically, then, that stable data need not have been obtained from
+    /// [`stable_view::StableView`] views of `data`, but it needs to behave as though it were.)
+    ///
+    /// If `slot` is in the [`RefMut`] state, then it any stable data it contains must not be
+    /// invalidated by performing the three kinds of operations permitted by
+    /// [`StableViewMut::view_mut`] on `data`. (That stable data need not have been obtained from
+    /// [`stable_view::StableViewMut`] views of `data`, but it needs to behave as though it were.)
     ///
     /// # Robust Guarantee
     /// This function only moves `data`, and does not unwind (which could cause `data` to be
     /// unexpectedly dropped). Therefore, it does not invalidate any `'stable` data in `slot`.
+    ///
+    /// [`NoRef`]: crate::slot::SelfRefCases::NoRef
+    /// [`Ref`]: crate::slot::SelfRefCases::Ref
+    /// [`RefMut`]: crate::slot::SelfRefCases::RefMut
+    /// [`StableView::view`]: stable_view::StableView::view
+    /// [`StableViewMut::view_mut`]: stable_view::StableViewMut::view_mut
     #[inline]
     #[must_use]
     pub(super) const unsafe fn from_slot<'stable: 'stable>(
@@ -128,6 +145,115 @@ where
             slot:     erased,
             variance: PhantomData,
             data,
+        }
+    }
+
+    /// Internal version of [`Self::from_slot_unchecked`], using [`SpeedBump`] for better
+    /// visibility of `Data` manipulations, and avoiding unnecessary safety comments for temporarily
+    /// converting the [`MappedSlot`] into a [`SelfRefSlot`].
+    ///
+    /// # Safety
+    /// TODO.
+    ///
+    /// # Robust Guarantee
+    /// This function only moves `data`, and does not unwind (which could cause `data` to be
+    /// unexpectedly dropped). Therefore, it does not invalidate any `'stable` data in `slot`.
+    #[inline]
+    #[must_use]
+    pub(crate) unsafe fn from_mapped_slot(
+        data: SpeedBump<Data>,
+        slot: MappedSlot<'_, 'data, 'upper, N, R, M>,
+    ) -> Self {
+        let erased = unsafe { slot.into_erased_slot() };
+
+        Self {
+            slot:     erased,
+            variance: PhantomData,
+            data,
+        }
+    }
+}
+
+impl<'data, 'upper, N, R, M, Data> AttachableRefFull<'data, 'upper, N, R, M, Data>
+where
+    'upper: 'data,
+    R:      for<'u> LendFamily<&'u ()>,
+    M:      for<'u> LendFamily<&'u ()>,
+{
+    /// Freely change the `'upper` parameter (provided that the `'upper: 'data` bound is still met).
+    ///
+    /// This is sound because the types to which [`Lend<'stable, &'upper (), R>`] and
+    /// [`Lend<'stable, &'upper (), M>`] normalize never actually use `'upper`. As long as those
+    /// types are well-formed for any `'stable` such that `'data: 'stable`, the exact `'upper`
+    /// lifetime does not matter, and `AttachableRefFull` does not place any additional invariants
+    /// on `'upper`. (However, some `InterestingType<AttachableRefFull<'_, 'upper, ..>>`
+    /// types **could** trigger unsoundness if `'upper` is changed.)
+    ///
+    /// As documented by [`Lend`], the compiler is unaware of that fact (and development of
+    /// [`variance-family`] included four failed attempts to work around that problem).
+    ///
+    /// [`variance-family`]: variance_family
+    /// [`Lend<'stable, &'upper (), R>`]: variance_family::Lend
+    /// [`Lend<'stable, &'upper (), M>`]: variance_family::Lend
+    /// [`Lend`]: variance_family::Lend
+    #[inline]
+    #[must_use]
+    pub fn change_upper<'new_upper>(self) -> AttachableRefFull<'data, 'new_upper, N, R, M, Data>
+    where
+        'new_upper: 'data,
+    {
+        unsafe {
+            transmute::<
+                AttachableRefFull<'data, 'upper, N, R, M, Data>,
+                AttachableRefFull<'data, 'new_upper, N, R, M, Data>,
+            >(self)
+        }
+    }
+
+    /// Freely change the `'upper` parameter (provided that the `'upper: 'data` bound is still met).
+    ///
+    /// See [`Self::change_upper`] for details. Note that `&Self` cares about the ability to read
+    /// values of type `Self`, but does not place any additional invariants on `'upper`.
+    ///
+    /// (Some `InterestingType<AttachableRefFull<'_, 'upper, ..>>` types **could** trigger
+    /// unsoundness if `'upper` is changed.)
+    #[inline]
+    #[must_use]
+    pub fn change_upper_by_ref<'a, 'new_upper>(
+        &'a self,
+    ) -> &'a AttachableRefFull<'data, 'new_upper, N, R, M, Data>
+    where
+        'new_upper: 'data,
+    {
+        unsafe {
+            transmute::<
+                &'a AttachableRefFull<'data, 'upper, N, R, M, Data>,
+                &'a AttachableRefFull<'data, 'new_upper, N, R, M, Data>,
+            >(self)
+        }
+    }
+
+    /// Freely change the `'upper` parameter (provided that the `'upper: 'data` bound is still met).
+    ///
+    /// See [`Self::change_upper`] for details. Note that `&mut Self` cares about the ability to
+    /// read and write values of type `Self`, but does not place any additional invariants on
+    /// `'upper`.
+    ///
+    /// (Some `InterestingType<AttachableRefFull<'_, 'upper, ..>>` types **could** trigger
+    /// unsoundness if `'upper` is changed.)
+    #[inline]
+    #[must_use]
+    pub fn change_upper_by_mut<'a, 'new_upper>(
+        &'a mut self,
+    ) -> &'a mut AttachableRefFull<'data, 'new_upper, N, R, M, Data>
+    where
+        'new_upper: 'data,
+    {
+        unsafe {
+            transmute::<
+                &'a mut AttachableRefFull<'data, 'upper, N, R, M, Data>,
+                &'a mut AttachableRefFull<'data, 'new_upper, N, R, M, Data>,
+            >(self)
         }
     }
 }

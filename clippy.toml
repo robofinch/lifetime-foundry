@@ -34,6 +34,8 @@ doc-valid-idents = [
 allowed-idents-below-min-chars = [
     # Default variable name in `Debug` and `Display` impls, and common name for callbacks.
     "f",
+    # Common name for callbacks, after `f`.
+    "g",
     # `t: T` is the most sensible identifier a lot of times
     "t",
     "..",

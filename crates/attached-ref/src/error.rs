@@ -1,3 +1,5 @@
+//! Small module for custom error types of this crate.
+
 use core::error::Error;
 use core::fmt::{Debug, Display, Formatter, Result as FmtResult};
 

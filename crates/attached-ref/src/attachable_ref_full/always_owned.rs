@@ -1,4 +1,4 @@
-#![expect(unsafe_code, reason = "perform unsafe lifetime erasure and extension of self-refs")]
+//! Temporary organization module.
 
 use variance_family::{Lend, LendFamily};
 
@@ -47,11 +47,14 @@ where
     #[inline]
     #[must_use]
     pub fn into_owned_slot(self) -> SelfRefSlot<'data, 'upper, N, R, M> {
-        let (slot, ()) = unsafe { self.into_raw_pieces() };
+        let ((), slot) = unsafe { self.into_raw_pieces() };
 
         slot
     }
 
+    /// Set the backing data of the `AttachableRefFull` to the given `data: Data` value.
+    ///
+    /// Since stable self-references to `()` are not possible, the old data is soundly discarded.
     #[inline]
     #[must_use]
     pub fn set_data<Data>(self, data: Data) -> AttachableRefFull<'data, 'upper, N, R, M, Data> {
