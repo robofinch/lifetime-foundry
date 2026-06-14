@@ -1,4 +1,4 @@
-//! [`covariant`], [`contravariant`], and [`unvarying`] macros that cover simple cases.
+//! [`family`], [`covariant`], [`contravariant`], and [`unvarying`] macros that cover simple cases.
 //!
 //! [`generic_wrapper`] for a slightly more complicated (and slightly more `unsafe`) case.
 //!
@@ -10,6 +10,7 @@
 //! Note that these macros are what `variance-family` uses internally for *all* of its
 //! `unsafe impl`s, so they should be quite versatile.
 //!
+//! [`family`]: crate::family
 //! [`covariant`]: crate::covariant
 //! [`contravariant`]: crate::contravariant
 //! [`unvarying`]: crate::unvarying
@@ -23,6 +24,107 @@
     reason = "create marker function for triggering `unsafe_code` lints for users",
 )]
 
+
+/// Implement a simple lifetime family, which is not necessarily covariant or contravariant.
+///
+/// The family must be well-formed for *any* `'varying` lifetime (that is, no custom `'lower` or
+/// `Upper` bounds are permitted).
+///
+/// # Examples
+/// ```rust
+/// # use core::marker::PhantomData;
+/// # use variance_family::family;
+/// struct Foo<'a, 'b, 'c, T: ?Sized>(&'a str, &'b usize, &'c T);
+///
+/// // This usage of `fn` makes `VaryingFoo` be `Send + Sync` while having the same variance
+/// // over `'c` and `T` as `Foo`.
+/// struct VaryingFoo<'c, T: ?Sized>(PhantomData<fn() -> &'c T>);
+///
+/// family! {
+///     // The varying lifetime must come first (and is mandatory).
+///     // (You can name it something else, `'varying` is just a convention.)
+///     // `LifetimeFamily<'_, _>` is simply a magic string you must include.
+///     // (This is intended to mimic real Rust syntax, of course.)
+///     impl<'varying, {'other, Generics,}> LifetimeFamily<'_, _>
+///     // (See below docs for why this `unsafe` is necessary.)
+///     // SAFETY: `VaryingFoo` is defined in this crate.
+///     for #[unsafe(not_a_foreign_fundamental_type)] VaryingFoo<'other, Generics>
+///     // The type given here is the `'varying`-parameterized type.
+///     as Foo<'varying, 'varying, 'other, Generics>
+///     // If `where` is included, then at least one of the following two types of where-bounds
+///     // must be included. If both are included, they must be in this order.
+///     where {
+///         // We could have done `impl<'varying, {'other, Generics: ?Sized}>` instead.
+///         Generics: ?Sized,
+///     } and for<'varying> {
+///         // A silly example, of course. The point being that you can have where-bounds
+///         // which mention `'varying`, though they need to be listed separately.
+///         // Each bound should be in its own set of braces, so that `for<'varying>` can be
+///         // applied to each.
+///         {&'varying (): Copy},
+///     }
+/// }
+/// ```
+///
+/// Simpler example:
+/// ```rust
+/// # use variance_family::family;
+/// struct Bar<'a>(&'a u8);
+///
+/// struct VaryingBar;
+///
+/// family! {
+///     // The `, {..}` is optional. (Note that for simplicity of implementation, a trailing
+///     // comma is not permitted after the varying lifetime in this case.)
+///     impl<'varying> LifetimeFamily<'_, _>
+///     // SAFETY: `VaryingBar` is defined in this crate.
+///     for #[unsafe(not_a_foreign_fundamental_type)] VaryingBar
+///     as Bar<'varying>
+/// }
+/// ```
+///
+/// # Safety
+/// `unsafe(not_a_foreign_fundamental_type)`
+/// One safety condition for implementing [`WithLifetime`] requires that it *not* be implemented
+/// for family types not defined in your crate (with the exception of `variance-family`
+/// implementing its traits for types in `core`, `alloc`, and `std`).
+///
+/// Thanks to the orphan rules, this rule is mostly irrelevant; it only matters for
+/// `#[fundamental]` types.
+///
+/// If the family type used with this macro (the type following `for`, **not** the varying type
+/// following `as`) is a `#[fundamental]` type which already implements a variance family trait,
+/// then you *should* get a compilation error.
+/// (This includes all current stable `#[fundamental]` types.)
+///
+/// However, for a `#[fundamental]` type were to not already implement a variance family trait,
+/// you could violate the safety condition of [`WithLifetime`] with this macro. *Hypothetically*,
+/// someone (possibly including the crate which defined the `#[fundamental]` type) could rely on
+/// "this type cannot soundly implement [`WithLifetime`]" and find a way to escalate that to
+/// Undefined Behavior.
+///
+/// Therefore, to be thoroughly sound, this macro requires a
+/// `#[unsafe(not_a_foreign_fundamental_type)]` annotation on the family type.
+/// (Though, that annotation is slightly inaccurate for internal usage of this macro in
+/// `variance-family`.)
+///
+/// # Lints
+///
+/// This macro `expect`s the `unsafe_code` lint for most of its implementation, since
+/// its `unsafe impl`s are mostly encapsulated, but calls an `unsafe` function to denote the
+/// remaining `unsafe` assertion. Currently, the `unsafe_code` lint sadly might not trigger, but
+/// perhaps it will someday be possible for this macro to reliably trigger that lint.
+///
+/// [`WithLifetime`]: crate::traits::WithLifetime
+#[macro_export]
+macro_rules! family {
+    {$($body:tt)*} => {
+        $crate::__varying_family! {
+            @ Lifetime
+            $($body)*
+        }
+    };
+}
 
 /// Implement a simple covariant family.
 ///
@@ -118,7 +220,7 @@
 #[macro_export]
 macro_rules! covariant {
     {$($body:tt)*} => {
-        $crate::__either_variance_family! {
+        $crate::__varying_family! {
             @ Covariant
             $($body)*
         }
@@ -147,7 +249,7 @@ macro_rules! covariant {
 #[macro_export]
 macro_rules! contravariant {
     {$($body:tt)*} => {
-        $crate::__either_variance_family! {
+        $crate::__varying_family! {
             @ Contravariant
             $($body)*
         }
@@ -657,7 +759,37 @@ macro_rules! varying_ref_mut_wrapper {
 /// risk of UB).
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __either_variance_family {
+macro_rules! __varying_family {
+    {
+        @ Lifetime
+        impl<$varying:lifetime, {$($params:tt)*}> LifetimeFamily <'_, _>
+        for #[unsafe(not_a_foreign_fundamental_type)] $family_type:ty
+        as $varying_type:ty
+        where {$($non_varying_wb:tt)*}
+        and for<$wb_varying:lifetime> {
+            $({$($varying_wb:tt)*}),*$(,)?
+        }
+    } => {
+        // SAFETY: Asserted by user of this macro.
+        const _: () = unsafe { $crate::assert_not_a_foreign_fundamental_type() };
+
+        #[expect(
+            unsafe_code,
+            reason = "safely encapsulated, aside from `#[unsafe(not_a_foreign_fundamental_type)]`",
+        )]
+        const _: () = {
+            $crate::__impl_with_lifetime! {
+                impl<$varying, $varying, $varying, {$($params)*}> _ <'_, _>
+                for #[unsafe(not_a_foreign_fundamental_type)] $family_type
+                as $varying_type
+                where {$($non_varying_wb)*}
+                and for<$wb_varying> {
+                    $({$($varying_wb)*},)*
+                }
+            }
+        };
+    };
+
     {
         @ Covariant
         impl<$varying:lifetime, {$($params:tt)*}> CovariantFamily <'_, _>
@@ -748,7 +880,7 @@ macro_rules! __either_variance_family {
             $({$($varying_wb:tt)*}),*$(,)?
         }
     } => {
-        $crate::__either_variance_family! {
+        $crate::__varying_family! {
             @ $variance
             impl<$varying, {}> $variance_family <'_, _>
             for #[unsafe(not_a_foreign_fundamental_type)] $family_type
@@ -767,7 +899,7 @@ macro_rules! __either_variance_family {
         as $varying_type:ty
         where {$($non_varying_wb:tt)*}
     } => {
-        $crate::__either_variance_family! {
+        $crate::__varying_family! {
             @ $variance
             impl<$varying$(, {$($params)*})?> $variance_family <'_, _>
             for #[unsafe(not_a_foreign_fundamental_type)] $family_type
@@ -785,7 +917,7 @@ macro_rules! __either_variance_family {
             $({$($varying_wb:tt)*}),*$(,)?
         }
     } => {
-        $crate::__either_variance_family! {
+        $crate::__varying_family! {
             @ $variance
             impl<$varying$(, {$($params)*})?> $variance_family <'_, _>
             for #[unsafe(not_a_foreign_fundamental_type)] $family_type
@@ -802,7 +934,7 @@ macro_rules! __either_variance_family {
         for #[unsafe(not_a_foreign_fundamental_type)] $family_type:ty
         as $varying_type:ty
     } => {
-        $crate::__either_variance_family! {
+        $crate::__varying_family! {
             @ $variance
             impl<$varying$(, {$($params)*})?> $variance_family <'_, _>
             for #[unsafe(not_a_foreign_fundamental_type)] $family_type
@@ -865,7 +997,7 @@ macro_rules! __impl_with_lifetime {
             $($non_varying_wb)*
         {
             fn prove_equal<'other_lower, OtherUpper>(
-                varying: $crate::RawMutVarying<'varying, 'other_lower, OtherUpper, Self>,
+                varying: $crate::RawMutVarying<$varying, 'other_lower, OtherUpper, Self>,
             ) -> *mut *mut $varying_type
             where
                 // Make the lifetime early-bound.

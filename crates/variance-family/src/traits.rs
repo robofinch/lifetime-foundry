@@ -157,6 +157,19 @@ pub unsafe trait ChangeBounds<'varying, 'lower, Upper, V: ?Sized> {
 
 /// A slightly shorter and more legible alias for
 /// `<T as WithLifetime<'varying, 'lower, Upper>>::Is`.
+///
+/// See [`WithLifetime`] for more information.
+///
+/// # `'lower` and `Upper`
+///
+/// Note that the concrete type which `Varying<'varying, 'lower, Upper, T>` normalizes to only
+/// actually uses `'varying` and `T`, not `'lower` or `Upper`. Those other two parameters are
+/// included for the sake of implied bounds.
+///
+/// Unfortunately, "`Varying<'varying, 'lower, Upper, T>` does not actually use `'lower` or `Upper`"
+/// is enforced via `unsafe trait` safety requirements, so the compiler is unaware of that fact;
+/// manual transmutes between `Varying<'v, 'l1, U1, T>` and `Varying<'v, 'l2, U2, T>` may be
+/// necessary in some cases.
 pub type Varying<'varying, 'lower, Upper, T> = <T as WithLifetime<'varying, 'lower, Upper>>::Is;
 
 /// A type which can only coerce to a different type `U` via subtyping coercions.
@@ -503,4 +516,16 @@ where
 /// `<T as WithLifetime<'varying, 'varying, Upper>>::Is`.
 ///
 /// This is intended to be used with [`LendFamily`], which places no lower bound on `'varying`.
+///
+/// See [`WithLifetime`] for more information.
+///
+/// # `Upper`
+///
+/// Note that the concrete type which `Lend<'varying, Upper, T>` normalizes to only actually uses
+/// `'varying` and `T`, not `'lower` or `Upper`. Those other parameters is included for the sake of
+/// implied bounds.
+///
+/// Unfortunately, "`Lend<'varying, Upper, T>` does not actually use `Upper`" is enforced via
+/// `unsafe trait` safety requirements, so the compiler is unaware of that fact; manual transmutes
+/// between `Lend<'v, U1, T>` and `Lend<'v, U2, T>` may be necessary in some cases.
 pub type Lend<'varying, Upper, T> = <T as WithLifetime<'varying, 'varying, Upper>>::Is;
